@@ -49,6 +49,17 @@ docker compose exec api php artisan relay:admin you@example.com --generate   # p
 
 > **Before exposing HookRelay anywhere,** copy `.env.example` to `.env`, set `APP_KEY`, `ADMIN_TOKEN`, `RELAY_OUTBOUND_SECRET` and `POSTGRES_PASSWORD`, and decide on `DEMO_MODE`. The compose file ships development defaults so it works from a clean clone. With `APP_ENV=production`, every API container refuses to start while `APP_KEY`, `ADMIN_TOKEN` or `RELAY_OUTBOUND_SECRET` is empty or still a default. See [SECURITY.md](SECURITY.md).
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Overview: delivery stats, latency and recent failures](docs/screenshots/overview.png) | ![Event detail: raw headers, pretty-printed body, deliveries with attempt timelines](docs/screenshots/event-detail.png) |
+| **Overview:** 24 h stats, latency and recent failures | **Event detail:** headers, body and the attempt timeline per delivery |
+| ![Dead letter with bulk replay](docs/screenshots/dead-letter.png) | ![Destinations with circuit breaker state](docs/screenshots/destinations.png) |
+| **Dead letter:** dead and failed tabs, plus a queued bulk replay with progress | **Destinations:** circuit-breaker state ("circuit open, retry in 5s") |
+| ![Events list](docs/screenshots/events.png) | ![Login with the demo account pre-filled](docs/screenshots/login.png) |
+| **Events:** filter by source and date | **Login:** demo credentials pre-filled in demo mode |
+
 ## Architecture
 
 ```mermaid
@@ -223,6 +234,62 @@ The limits:
 - **Dedupe has edge cases.** The idempotency key is per source. For the body-hash fallback, two legitimately identical payloads within the dedupe window count as one event.
 - **Bodies are capped.** The API accepts bodies up to `RELAY_MAX_BODY_BYTES` (default 2 MB; at most 10 MB, PHP's `post_max_size`), and everything lives in Postgres. *TODO(object-storage): spill large bodies to S3-compatible storage.*
 
+## Design decisions
+
+### Transactional outbox, not "enqueue on receive"
+
+Ingestion writes the event **and** one `pending` delivery per connection in a single Postgres transaction, then answers `202`. It never talks to Redis. The alternative, pushing a job to the queue inside the request, has a gap: if the process dies after the database commit but before the push (or Redis is down), the webhook is acknowledged but never delivered. With the outbox, Postgres is the only source of truth. Redis is a fast pipe that can lose its contents without losing a webhook, because the dispatcher re-reads due deliveries from Postgres, and anything stuck in `delivering` is recovered after 5 minutes.
+
+*Cost:* one extra hop, the dispatcher, which adds up to about 2 s of latency when idle and is a single process to keep alive. It has a healthcheck and can run as several copies, as the next section explains.
+
+### `FOR UPDATE SKIP LOCKED` for claiming work
+
+The dispatcher claims due deliveries like this:
+
+```sql
+WITH due AS (
+  SELECT p.id FROM deliveries p JOIN destinations dst ON dst.id = p.destination_id AND dst.enabled
+   WHERE p.status = 'pending' AND p.next_attempt_at <= now()
+   ORDER BY p.next_attempt_at LIMIT 100
+   FOR UPDATE OF p SKIP LOCKED)
+UPDATE deliveries d SET status = 'delivering' FROM due WHERE d.id = due.id RETURNING d.id;
+```
+
+`SKIP LOCKED` lets any number of dispatchers run at once. Each one takes rows nobody else has locked, without blocking and without double-claiming, and there's no separate lock service or leader election. The test suite proves it two ways: two connections holding overlapping claims, and two real `relay:dispatch` processes draining 600 deliveries, with every delivery queued exactly once. The claim lives in a **CTE**, because Postgres may execute an `IN (SELECT … LIMIT … SKIP LOCKED)` subquery more than once (see Lessons learned).
+
+### Exponential backoff with full jitter
+
+A failed attempt waits `random(0, min(cap, base × factor^(n−1)))`: base 30 s, factor 4, cap 6 h. Plain exponential backoff makes every webhook that failed during the same outage retry at the same instants, so a recovering destination gets hit by synchronized waves. Full jitter spreads retries uniformly, which minimises total work and contention ([AWS Architecture Blog](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)). The trade-off is that an individual retry can come sooner than a fixed schedule would suggest; the cap and `max_attempts` bound the total.
+
+### Per-destination circuit breaker
+
+After 5 consecutive failures, a destination's circuit **opens** for 60 s. Its deliveries are postponed **without spending attempts**, then a single probe is let through (half-open, using `SET NX` in Redis). A success closes the circuit; a failure re-opens it. Without a breaker, an hour-long outage would burn every delivery's attempts and fill the dead-letter list with webhooks that would have succeeded later. The state lives in Redis so all workers share it, and a `4xx` counts as proof the destination is up.
+
+### At-least-once delivery, with dedupe at the edges
+
+Exactly-once delivery over HTTP isn't achievable. A destination can process a request and then the response can be lost. HookRelay chooses **at-least-once** and makes duplicates cheap to handle at both ends:
+
+- **Inbound:** a per-source idempotency key (the provider's event ID or a body hash, within a dedupe window) drops provider retries.
+- **Outbound:** every request carries `X-HookRelay-Event-Id`, the stable ID receivers should dedupe on.
+
+The alternative, at-most-once, would silently lose webhooks whenever a worker crashed mid-request, which is the worse failure for payments and orders.
+
+## Lessons learned
+
+Three bugs from Phase 1, all caught before release by tests or end-to-end checks. Each is now pinned by a regression test.
+
+1. **The test suite wiped the development database.** PHPUnit's `<env force="true">` sets `$_ENV`, but Laravel's `env()` reads `$_SERVER` first. Inside the API container, `DB_DATABASE=hookrelay` was already in `$_SERVER`, so `RefreshDatabase` ran `migrate:fresh` against the dev database instead of `hookrelay_test`.
+   - **Fix:** set every forced value as both `<env>` and `<server>`.
+   - **Guard:** `TestCase::createApplication()` refuses to run unless the database name ends in `_test`. It runs before any testing trait, so this class of mistake now fails loudly instead of deleting data.
+   - **Lesson:** a destructive tool needs a guard where the destruction happens, not just correct config.
+2. **The dispatcher ignored its batch limit.** The first claim used `UPDATE … WHERE id IN (SELECT … LIMIT 100 FOR UPDATE SKIP LOCKED)`, and a batch of 2 claimed 5 rows. Postgres is free to execute that subquery more than once, and with `SKIP LOCKED` each execution can return different rows.
+   - **Fix:** move the locking `SELECT` into a CTE, which Postgres evaluates exactly once.
+   - **Lesson:** concurrency primitives need concurrency tests. The limit test and the two-connection `SKIP LOCKED` test failed on the first run, which is exactly why they exist.
+3. **The dashboard crashed after a successful bulk replay.** The server action redirected, and Next.js then handed `undefined` back as the form state, so a component that read `state.message` threw on the client. The replay had worked, but the user saw an error page. A unit test wouldn't have caught it. Driving the real UI in a headless browser did.
+   - **Fix:** form state is treated as possibly `undefined` everywhere.
+   - **Phase 2 cousin:** React 19 now resets forms after an action, which wiped what the user had typed after a validation error. Actions now echo non-secret values back.
+   - **Lesson:** run the happy path end to end in a real browser, and assume framework edge cases will change between majors.
+
 ## Management API
 
 All `/api/*` routes need a bearer token: either the static `ADMIN_TOKEN` (for scripts; acts as an admin) or a session token from `POST /api/auth/login` (what the dashboard uses; acts as that user). See [docs/api.md](docs/api.md) for every endpoint and response shape.
@@ -311,7 +378,11 @@ The dashboard lints with ESLint 9 using typescript-eslint, react, react-hooks an
 ### Known gaps / roadmap
 
 - **Auth is deliberately simple:** admin and demo roles, with no per-user permissions, password reset or SSO. *TODO(auth)*
-- Multi-tenancy, billing and a WordPress plugin are out of scope for Phase 1. *TODO(multi-tenancy)*
+- **Slow destinations need workers.** Each worker sends one request at a time, so a destination that takes 2 s gets `workers ÷ 2` deliveries/s (see [BENCHMARKS.md](BENCHMARKS.md)). Per-destination concurrency with an async HTTP client is the next delivery improvement.
+- **One dispatcher by default.** `SKIP LOCKED` makes extra copies safe, but Compose runs one.
+- Multi-tenancy, billing, a WordPress plugin and object storage for large bodies are still out of scope. *TODO(multi-tenancy)*, *TODO(object-storage)*
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get involved and [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## License
 
