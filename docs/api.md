@@ -1,6 +1,11 @@
 # HookRelay management API
 
-All `/api/*` routes require `Authorization: Bearer $ADMIN_TOKEN` and speak JSON.
+All `/api/*` routes (except login and the demo hint) require `Authorization: Bearer <token>` and speak JSON. The token is either:
+
+- the static `ADMIN_TOKEN`, which acts as an admin (for scripts and automation); or
+- a session token from `POST /api/auth/login`, which acts as that user. This is what the dashboard uses.
+
+There are two roles. **admin** has full access. **demo** exists only when `DEMO_MODE=true`. It can read everything, send test webhooks, replay, and create sources, connections and destinations, but destinations only on `DEMO_DESTINATION_HOSTS`. Any `PUT`/`PATCH`/`DELETE` from a demo user returns `403`.
 Timestamps are ISO-8601 UTC strings. IDs are UUIDs except connections and attempts (integers).
 Validation errors return `422 {"message": "...", "errors": {"field": ["..."]}}`.
 
@@ -14,6 +19,15 @@ Validation errors return `422 {"message": "...", "errors": {"field": ["..."]}}`.
 | Duplicate (same idempotency key) | `200` | `{"event_id": "uuid", "duplicate": true}` |
 | Bad / missing signature | `401` | `{"message": "Invalid signature."}` |
 | Unknown source | `404` | `{"message": "Unknown source."}` |
+
+## Auth
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/auth/login` | `{email, password}` → `{token, expires_at, user:{id,name,email,role}}`. `422` for bad credentials (the same message whether the email or the password is wrong). `429` after 10 attempts a minute per email. Public. |
+| GET | `/api/auth/demo` | `{demo_mode:false}`, or `{demo_mode:true, email, password}` with the public demo credentials. Public. |
+| GET | `/api/auth/me` | `{user, demo_mode}` |
+| POST | `/api/auth/logout` | Ends the session → `204` |
 
 ## Resources
 
@@ -71,13 +85,14 @@ Event detail (`GET /api/events/{id}`) adds `"headers": {"name": ["value", ...]}`
 |---|---|---|
 | GET | `/api/sources` | all sources (not paginated) |
 | POST | `/api/sources` | `{name, slug, provider?, signing_secret?, dedupe_window_seconds?}` → 201 `{data: Source}` |
-| GET/PUT/DELETE | `/api/sources/{id}` | PUT accepts the same fields (all optional); `signing_secret: null` clears it |
+| GET/PUT/DELETE | `/api/sources/{id}` | PUT accepts the same fields (all optional); `signing_secret: null` clears it. PUT/DELETE: admin only |
+| POST | `/api/sources/{id}/test` | `{body?}` → `202 {event_id, deliveries}`. Sends a test webhook through the normal pipeline: no signature check, never deduped, and the event carries an `X-HookRelay-Test` header |
 | GET | `/api/destinations` | all destinations |
 | POST | `/api/destinations` | `{name, url, auth_header?, timeout_ms?, rate_limit_rps?, max_attempts?, enabled?}` → 201 |
-| GET/PUT/DELETE | `/api/destinations/{id}` | |
+| GET/PUT/DELETE | `/api/destinations/{id}` | PUT/DELETE: admin only |
 | GET | `/api/connections` | all connections, filter `?source_id=` |
 | POST | `/api/connections` | `{source_id, destination_id, enabled?}` → 201 |
-| PUT/DELETE | `/api/connections/{id}` | PUT `{enabled}` |
+| PUT/DELETE | `/api/connections/{id}` | PUT `{enabled}`. Admin only |
 | GET | `/api/events` | paginated; `?source_id=&from=&to=&page=&per_page=` (from/to are dates or datetimes) |
 | GET | `/api/events/{id}` | detail with deliveries + attempts |
 | GET | `/api/deliveries` | paginated; `?status=&destination_id=&event_id=&has_error=1&page=&per_page=` newest first (by updated_at) |

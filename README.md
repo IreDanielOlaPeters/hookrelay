@@ -13,13 +13,28 @@ A self-hostable webhook relay. HookRelay receives webhooks from providers such a
 
 ```bash
 docker compose up -d      # api :8080, dashboard :3000, mock receiver :4000
-make seed                 # demo sources + destinations (or: docker compose exec api php artisan db:seed --force)
 curl -X POST localhost:8080/in/demo -H 'Content-Type: application/json' -d '{"hello":"world"}'
 ```
 
-Then open <http://localhost:3000>. The event is delivered to the `/ok` receiver straight away. The `/flaky` receiver fails half the time, so its delivery shows retries.
+Then open <http://localhost:3000> and sign in. The event is delivered to the `/ok` receiver straight away. The `/flaky` receiver fails half the time, so its delivery shows retries.
 
-The first `docker compose up` builds the images, which takes a few minutes. Migrations run automatically when the `api` container starts.
+The first `docker compose up` builds the images, which takes a few minutes. On boot the `api` container runs migrations and, in demo mode, creates the demo user and demo data, so `make seed` is optional.
+
+### Demo account
+
+| Email | Password |
+|---|---|
+| `demo@hookrelay.local` | `hookrelay-demo` |
+
+The login page pre-fills these credentials when `DEMO_MODE=true`, which is the Compose default. The demo user can browse, send test webhooks and replay deliveries. It can create destinations only on the mock receiver, and it can't delete data or change settings. A banner reads "Demo mode, data resets nightly", and a scheduled job restores the demo data at 03:00 UTC.
+
+For full access, create an admin:
+
+```bash
+docker compose exec api php artisan relay:admin you@example.com --generate   # prints a random password
+```
+
+> **Self-hosting for real? Set `DEMO_MODE=false`.** The demo credentials are public. With demo mode off, the demo user is deleted on boot and can't sign in, and the nightly reset doesn't run.
 
 | Command | What it does |
 |---|---|
@@ -30,7 +45,7 @@ The first `docker compose up` builds the images, which takes a few minutes. Migr
 | `make logs` | Follow the logs of every service |
 | `make lint` | Run Pint and ESLint |
 
-> **Before exposing HookRelay anywhere,** copy `.env.example` to `.env` and set `APP_KEY`, `ADMIN_TOKEN`, `RELAY_OUTBOUND_SECRET` and `POSTGRES_PASSWORD`. The compose file ships development defaults so it works from a clean clone. The API refuses to start with `APP_ENV=production` while those defaults are still in place.
+> **Before exposing HookRelay anywhere,** copy `.env.example` to `.env`, set `APP_KEY`, `ADMIN_TOKEN`, `RELAY_OUTBOUND_SECRET` and `POSTGRES_PASSWORD`, and decide on `DEMO_MODE`. The compose file ships development defaults so it works from a clean clone. With `APP_ENV=production`, every API container refuses to start while `APP_KEY`, `ADMIN_TOKEN` or `RELAY_OUTBOUND_SECRET` is empty or still a default. See [SECURITY.md](SECURITY.md).
 
 ## Architecture
 
@@ -40,7 +55,7 @@ flowchart LR
 
     subgraph API["api (Laravel 12)"]
         I["Ingestion<br/>verify signature → idempotency key"]
-        M["Management API<br/>/api/* (ADMIN_TOKEN)"]
+        M["Management API<br/>/api/* (session or ADMIN_TOKEN)"]
     end
 
     I -->|"one transaction:<br/>event + pending deliveries"| PG[("Postgres 16<br/>events · deliveries · attempts<br/>(transactional outbox)")]
@@ -67,7 +82,8 @@ flowchart LR
 | `worker` (×2) | `php artisan queue:work redis`: performs the HTTP deliveries. Scale it with `WORKER_REPLICAS`. |
 | `postgres` | Source of truth: the events, deliveries and attempts tables. |
 | `redis` | Job queue, per-destination token buckets and circuit-breaker state. |
-| `dashboard` | Next.js 16 UI. It calls the API server-side with `ADMIN_TOKEN`, so the token never reaches the browser. |
+| `dashboard` | Next.js 16 UI behind a login. It calls the API server-side with the signed-in user's session token, kept in an httpOnly cookie. |
+| `cron` | `php artisan schedule:work`: scheduled tasks such as the nightly demo reset. |
 | `mock-receiver` | A test destination: `/ok` (200), `/fail` (500), `/flaky` (50 % 500), `/timeout` (hangs), or `/any?mode=…&status=…&delay_ms=…`. `GET /_received` shows the last 100 requests. |
 
 ### Lifecycle of a webhook
@@ -145,7 +161,7 @@ The limits:
 
 ## Management API
 
-All `/api/*` routes need `Authorization: Bearer $ADMIN_TOKEN`. See [docs/api.md](docs/api.md) for every endpoint and response shape.
+All `/api/*` routes need a bearer token: either the static `ADMIN_TOKEN` (for scripts; acts as an admin) or a session token from `POST /api/auth/login` (what the dashboard uses; acts as that user). See [docs/api.md](docs/api.md) for every endpoint and response shape.
 
 ```bash
 export HR=http://localhost:8080 AUTH="Authorization: Bearer dev-admin-token" JSON="Content-Type: application/json"
@@ -187,7 +203,10 @@ Set these in the root `.env`; Compose reads them. Defaults are in brackets.
 | Variable | Purpose |
 |---|---|
 | `APP_KEY` | Laravel encryption key, used for `signing_secret` and `auth_header` at rest. Generate one with `docker compose run --rm api php artisan key:generate --show`. |
-| `ADMIN_TOKEN` | Bearer token for `/api/*`; the dashboard uses it too. [`dev-admin-token`] |
+| `ADMIN_TOKEN` | Static admin bearer token for `/api/*` scripts and automation. The dashboard doesn't use it. [`dev-admin-token`] |
+| `DEMO_MODE` | Public demo: demo user, banner, nightly reset. **Set `false` for real installs.** [`true`] |
+| `DEMO_DESTINATION_HOSTS` | Hosts the demo user may create destinations on. [`mock-receiver`] |
+| `RELAY_SESSION_MINUTES` | Dashboard session lifetime. [720] |
 | `RELAY_OUTBOUND_SECRET` | HMAC secret for `X-HookRelay-Signature`. |
 | `RELAY_BACKOFF_BASE_SECONDS` / `_FACTOR` / `_CAP_SECONDS` | Retry schedule. [30 / 4 / 21600] Set the base to `2` for quick demos of retries and dead letters. |
 | `RELAY_DISPATCH_BATCH`, `RELAY_DISPATCH_INTERVAL` | Dispatcher batch size and idle sleep. [100, 2 s] |
@@ -218,7 +237,7 @@ The dashboard lints with ESLint 9 using typescript-eslint, react, react-hooks an
 
 ### Known gaps / roadmap
 
-- **The dashboard has no login.** It holds the admin token server-side, so anyone who can reach port 3000 can manage the relay. Keep it on a private network or behind an authenticating proxy. *TODO(auth)*
+- **Auth is deliberately simple:** admin and demo roles, with no per-user permissions, password reset or SSO. *TODO(auth)*
 - **No SSRF protection on destination URLs.** That's fine for a single trusted admin, but it's required before multi-tenancy. *TODO(security)*
 - **No retention or pruning job** for old events and attempts yet. *TODO(retention)*
 - **Bulk replay runs synchronously,** in chunks. Very large replays should move to a queued job. *TODO(scale)*
