@@ -1,0 +1,124 @@
+# HookRelay - local / self-hosted stack.
+# Every secret below has a DEVELOPMENT default so `docker compose up -d` works from a clean clone.
+# Override them in a root .env file (see .env.example) before exposing this anywhere.
+
+x-api-env: &api-env
+  APP_NAME: HookRelay
+  APP_ENV: ${APP_ENV:-local}
+  APP_DEBUG: ${APP_DEBUG:-false}
+  APP_KEY: ${APP_KEY:-base64:Hr3B76dIUXyBys2e3c2r1nGACL3Fjlhu1DtO0l/nENk=}
+  APP_URL: ${APP_URL:-http://localhost:8080}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_DATABASE: hookrelay
+  DB_USERNAME: hookrelay
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-hookrelay}
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  QUEUE_CONNECTION: redis
+  CACHE_STORE: redis
+  SESSION_DRIVER: array
+  ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
+  RELAY_OUTBOUND_SECRET: ${RELAY_OUTBOUND_SECRET:-dev-outbound-secret}
+  RELAY_BACKOFF_BASE_SECONDS: ${RELAY_BACKOFF_BASE_SECONDS:-30}
+  RELAY_BACKOFF_FACTOR: ${RELAY_BACKOFF_FACTOR:-4}
+  RELAY_BACKOFF_CAP_SECONDS: ${RELAY_BACKOFF_CAP_SECONDS:-21600}
+
+x-api-image: &api-image
+  build:
+    context: ./api
+  image: hookrelay-api:dev
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hookrelay
+      POSTGRES_USER: hookrelay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hookrelay}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hookrelay -d hookrelay"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *api-image
+    environment:
+      <<: *api-env
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/up"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  worker:
+    <<: *api-image
+    environment: *api-env
+    command: ["php", "artisan", "queue:work", "redis", "--queue=deliveries,default", "--sleep=1", "--tries=0", "--timeout=90", "--max-time=3600"]
+    depends_on:
+      api: { condition: service_healthy }
+    deploy:
+      replicas: ${WORKER_REPLICAS:-2}
+
+  scheduler:
+    <<: *api-image
+    environment: *api-env
+    command: ["php", "artisan", "relay:dispatch"]
+    depends_on:
+      api: { condition: service_healthy }
+
+  dashboard:
+    build:
+      context: ./dashboard
+    image: hookrelay-dashboard:dev
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8080
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    depends_on:
+      api: { condition: service_healthy }
+
+  mock-receiver:
+    build:
+      context: ./mock-receiver
+    image: hookrelay-mock-receiver:dev
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+    ports:
+      - "${MOCK_RECEIVER_PORT:-4000}:4000"
+
+volumes:
+  pgdata:
+  redisdata:

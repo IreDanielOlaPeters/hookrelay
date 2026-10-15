@@ -1,0 +1,9 @@
+{
+  "name": "hookrelay-mock-receiver",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Webhook destination that answers 200, 500, flaky or timeout for testing HookRelay.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "license": "MIT"
+}
