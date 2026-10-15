@@ -4,6 +4,7 @@ namespace App\Services\Delivery;
 
 use App\Enums\DeliveryStatus;
 use App\Models\Delivery;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -31,31 +32,44 @@ class Replayer
     }
 
     /**
-     * Replay every delivery matching the filters, in chunks so a big dead-letter queue
-     * does not hold one giant lock.
-     * TODO(scale): for very large replays, run this as a queued job and report progress.
+     * Replay every delivery matching the filters, in chunks so a big dead-letter queue doesn't
+     * hold one giant lock. Runs inside the RunReplayBatch job; $progress gets running totals.
      *
      * @param  array{status?: string, destination_id?: string, from?: string, to?: string}  $filters
+     * @param  null|callable(int $processed, int $replayed): void  $progress
      */
-    public function replayMatching(array $filters): int
+    public function replayMatching(array $filters, ?callable $progress = null): int
     {
         $status = $filters['status'] ?? DeliveryStatus::Dead->value;
 
-        $query = Delivery::query()
-            ->where('status', $status)
-            ->when($filters['destination_id'] ?? null, fn ($q, $id) => $q->where('destination_id', $id))
-            ->when($filters['from'] ?? null, fn ($q, $from) => $q->where('created_at', '>=', Carbon::parse($from)))
-            ->when($filters['to'] ?? null, fn ($q, $to) => $q->where('created_at', '<=', endOfIfDate($to)));
-
-        $total = 0;
-        $query->select('id')->chunkById(self::CHUNK, function ($chunk) use (&$total, $status) {
-            $total += DB::table('deliveries')
+        $processed = 0;
+        $replayed = 0;
+        $this->matching($filters)->select('id')->chunkById(self::CHUNK, function ($chunk) use (&$processed, &$replayed, $status, $progress) {
+            $replayed += DB::table('deliveries')
                 ->whereIn('id', $chunk->pluck('id'))
                 ->where('status', $status) // may have changed since the chunk was read
                 ->update($this->resetColumns());
+            $processed += $chunk->count();
+            if ($progress) {
+                $progress($processed, $replayed);
+            }
         });
 
-        return $total;
+        return $replayed;
+    }
+
+    public function countMatching(array $filters): int
+    {
+        return $this->matching($filters)->count();
+    }
+
+    private function matching(array $filters): Builder
+    {
+        return Delivery::query()
+            ->where('status', $filters['status'] ?? DeliveryStatus::Dead->value)
+            ->when($filters['destination_id'] ?? null, fn ($q, $id) => $q->where('destination_id', $id))
+            ->when($filters['from'] ?? null, fn ($q, $from) => $q->where('created_at', '>=', Carbon::parse($from)))
+            ->when($filters['to'] ?? null, fn ($q, $to) => $q->where('created_at', '<=', endOfIfDate($to)));
     }
 
     private function resetColumns(): array

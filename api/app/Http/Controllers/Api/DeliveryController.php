@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\BulkReplayRequest;
 use App\Http\Requests\ListDeliveriesRequest;
 use App\Http\Resources\DeliveryResource;
+use App\Http\Resources\ReplayBatchResource;
+use App\Jobs\RunReplayBatch;
 use App\Models\Delivery;
+use App\Models\ReplayBatch;
 use App\Services\Delivery\DeliveryInFlight;
 use App\Services\Delivery\Replayer;
 use Illuminate\Http\JsonResponse;
@@ -49,8 +52,16 @@ class DeliveryController extends Controller
         return new DeliveryResource($delivery->load(['destination', 'event', 'attempts']));
     }
 
-    public function bulkReplay(BulkReplayRequest $request, Replayer $replayer): JsonResponse
+    /** Queue a bulk replay; poll GET /api/replay-batches/{id} for progress. */
+    public function bulkReplay(BulkReplayRequest $request): JsonResponse
     {
-        return response()->json(['replayed' => $replayer->replayMatching($request->validated())]);
+        $user = $request->user();
+        $batch = ReplayBatch::create([
+            'filters' => array_filter($request->validated(), fn ($v) => $v !== null && $v !== '') + ['status' => 'dead'],
+            'created_by' => $user?->exists ? $user->id : null,
+        ]);
+        RunReplayBatch::dispatch($batch->id)->onQueue('default');
+
+        return (new ReplayBatchResource($batch->refresh()))->response()->setStatusCode(202);
     }
 }

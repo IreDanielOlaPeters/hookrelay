@@ -79,7 +79,7 @@ it('lets the demo user browse, send test webhooks and replay', function () {
     $delivery = Delivery::sole();
     $delivery->update(['status' => DeliveryStatus::Dead]);
     $this->postJson("/api/deliveries/{$delivery->id}/replay", [], $headers)->assertOk();
-    $this->postJson('/api/deliveries/replay', [], $headers)->assertOk();
+    $this->postJson('/api/deliveries/replay', [], $headers)->assertStatus(202);
 });
 
 it('sends test webhooks to signed sources without a signature and never dedupes them', function () {

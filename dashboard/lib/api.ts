@@ -171,6 +171,21 @@ export interface BulkReplayInput {
   to?: string;
 }
 
+export interface ReplayBatch {
+  id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  filters: BulkReplayInput;
+  total: number;
+  processed: number;
+  replayed: number;
+  /** 0..1 */
+  progress: number;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 export type Role = 'admin' | 'demo';
 
 export interface User {
@@ -381,8 +396,13 @@ export const api = {
   replayDelivery: async (id: string) =>
     (await request<Data<Delivery>>('POST', `/api/deliveries/${encodeURIComponent(id)}/replay`))
       .data,
-  bulkReplay: (input: BulkReplayInput) =>
-    request<{ replayed: number }>('POST', '/api/deliveries/replay', { body: input }),
+  /** Queues a bulk replay; poll getReplayBatch for progress. */
+  bulkReplay: async (input: BulkReplayInput) =>
+    (await request<Data<ReplayBatch>>('POST', '/api/deliveries/replay', { body: input })).data,
+  listReplayBatches: async () =>
+    unwrapList(await request<Data<ReplayBatch[]> | ReplayBatch[]>('GET', '/api/replay-batches')),
+  getReplayBatch: async (id: string) =>
+    (await request<Data<ReplayBatch>>('GET', `/api/replay-batches/${encodeURIComponent(id)}`)).data,
 };
 
 // ---------------------------------------------------------------------------

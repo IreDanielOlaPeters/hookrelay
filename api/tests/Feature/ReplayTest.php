@@ -68,18 +68,18 @@ it('bulk replays dead deliveries matching the filters, in chunks', function () {
 
     // Filter by destination.
     $this->postJson('/api/deliveries/replay', ['status' => 'dead', 'destination_id' => $a->destination_id], adminHeaders())
-        ->assertOk()->assertJson(['replayed' => 1]);
+        ->assertStatus(202)->assertJsonPath('data.replayed', 1);
     expect($a->refresh()->status)->toBe(DeliveryStatus::Pending)
         ->and($b->refresh()->status)->toBe(DeliveryStatus::Dead);
 
     // Filter by date range (whole days).
     $this->postJson('/api/deliveries/replay', ['from' => '2019-12-31', 'to' => '2020-01-01'], adminHeaders())
-        ->assertOk()->assertJson(['replayed' => 1]);
+        ->assertStatus(202)->assertJsonPath('data.replayed', 1);
     expect($c->refresh()->status)->toBe(DeliveryStatus::Pending)
         ->and($b->refresh()->status)->toBe(DeliveryStatus::Dead);
 
     // No filters: everything still dead.
-    $this->postJson('/api/deliveries/replay', [], adminHeaders())->assertOk()->assertJson(['replayed' => 1]);
+    $this->postJson('/api/deliveries/replay', [], adminHeaders())->assertStatus(202)->assertJsonPath('data.replayed', 1);
     expect(Delivery::where('status', 'dead')->count())->toBe(0);
 });
 
@@ -94,6 +94,11 @@ it('bulk replays more deliveries than one chunk', function () {
     }
     Delivery::insert($rows);
 
-    $this->postJson('/api/deliveries/replay', ['status' => 'dead'], adminHeaders())->assertOk()->assertJson(['replayed' => 1201]);
+    $this->postJson('/api/deliveries/replay', ['status' => 'dead'], adminHeaders())
+        ->assertStatus(202)
+        ->assertJsonPath('data.status', 'completed')
+        ->assertJsonPath('data.total', 1201)
+        ->assertJsonPath('data.processed', 1201)
+        ->assertJsonPath('data.replayed', 1201);
     expect(Delivery::where('status', 'pending')->count())->toBe(1201);
 });

@@ -13,7 +13,7 @@ export function BulkReplayForm({
   defaults,
 }: {
   destinations: Option[];
-  defaults: { destination_id?: string; from?: string; to?: string };
+  defaults: { destination_id?: string; from?: string; to?: string; status?: 'dead' | 'failed' };
 }) {
   const [state, action] = useActionState(bulkReplayAction, {});
   return (
@@ -21,10 +21,11 @@ export function BulkReplayForm({
       action={action}
       className="space-y-3 p-4"
       onSubmit={(e) => {
-        if (!window.confirm('Replay every dead delivery matching these filters?')) e.preventDefault();
+        if (!window.confirm(`Replay every ${defaults.status ?? 'dead'} delivery matching these filters?`)) e.preventDefault();
       }}
     >
       <FormMessage state={state} fields={['destination_id', 'from', 'to']} />
+      <input type="hidden" name="status" value={defaults.status ?? 'dead'} />
       <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
         <div>
           <label className="label" htmlFor="bulk-dest">Destination</label>
@@ -51,7 +52,7 @@ export function BulkReplayForm({
           <input id="bulk-to" name="to" type="date" className="input" defaultValue={state?.values?.to ?? defaults.to} />
           <FieldError state={state} name="to" />
         </div>
-        <SubmitButton pendingLabel="Replaying…">Bulk replay dead</SubmitButton>
+        <SubmitButton pendingLabel="Replaying…">{`Bulk replay ${defaults.status ?? 'dead'}`}</SubmitButton>
       </div>
     </form>
   );

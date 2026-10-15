@@ -225,16 +225,17 @@ export async function bulkReplayAction(_prev: FormState, fd: FormData): Promise<
   const destinationId = str(fd, 'destination_id');
   const fromDate = str(fd, 'from');
   const toDate = str(fd, 'to');
+  const status = str(fd, 'status') === 'failed' ? 'failed' : 'dead';
   const input: BulkReplayInput = {
-    status: 'dead',
+    status,
     destination_id: destinationId,
     from: dateBound(fromDate, 'start'),
     to: dateBound(toDate, 'end'),
   };
 
-  let replayed: number;
+  let batchId: string;
   try {
-    replayed = (await api.bulkReplay(input)).replayed;
+    batchId = (await api.bulkReplay(input)).id;
   } catch (err) {
     return keepValues(fd, failure(err));
   }
@@ -245,7 +246,8 @@ export async function bulkReplayAction(_prev: FormState, fd: FormData): Promise<
       destination_id: destinationId,
       from: fromDate,
       to: toDate,
-      replayed: replayed ?? 0,
+      status: status === 'dead' ? undefined : status,
+      batch: batchId,
     }),
   );
 }
