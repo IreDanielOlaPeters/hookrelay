@@ -86,6 +86,8 @@ services:
     command: ["php", "artisan", "queue:work", "redis", "--queue=deliveries,default", "--sleep=1", "--tries=0", "--timeout=90", "--max-time=3600"]
     depends_on:
       api: { condition: service_healthy }
+    healthcheck:
+      disable: true  # no HTTP server here; the base image's check would always fail
     deploy:
       replicas: ${WORKER_REPLICAS:-2}
 
@@ -93,6 +95,8 @@ services:
     <<: *api-image
     environment: *api-env
     command: ["php", "artisan", "relay:dispatch"]
+    healthcheck:
+      disable: true
     depends_on:
       api: { condition: service_healthy }
 
