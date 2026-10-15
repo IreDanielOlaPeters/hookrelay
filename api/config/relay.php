@@ -5,6 +5,9 @@ return [
     // TODO(auth): replace with per-user tokens / SSO when auth grows beyond a single admin.
     'admin_token' => env('ADMIN_TOKEN'),
 
+    // relay:prune deletes delivered events older than this (never inside a source's dedupe window).
+    'retention_days' => (int) env('RELAY_RETENTION_DAYS', 7),
+
     // Dashboard session lifetime (minutes) after login.
     'session_minutes' => (int) env('RELAY_SESSION_MINUTES', 720),
 

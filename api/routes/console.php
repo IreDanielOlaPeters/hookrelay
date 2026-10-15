@@ -13,4 +13,7 @@ Schedule::command('relay:demo-reset')
     ->withoutOverlapping()
     ->onOneServer();
 
-// TODO(retention): relay:prune (step 4).
+Schedule::command('relay:prune')
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->onOneServer();
