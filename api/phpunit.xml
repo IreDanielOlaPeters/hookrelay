@@ -23,6 +23,8 @@
              Tests run against real Postgres (SKIP LOCKED) and Redis (token bucket, circuit breaker). -->
         <env name="APP_ENV" value="testing" force="true"/>
         <server name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_URL" value="http://localhost" force="true"/>
+        <server name="APP_URL" value="http://localhost" force="true"/>
         <env name="APP_KEY" value="base64:Hr3B76dIUXyBys2e3c2r1nGACL3Fjlhu1DtO0l/nENk=" force="true"/>
         <server name="APP_KEY" value="base64:Hr3B76dIUXyBys2e3c2r1nGACL3Fjlhu1DtO0l/nENk=" force="true"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>

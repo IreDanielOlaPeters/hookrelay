@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Foundation\Auth\User;
+
 return [
 
     /*
@@ -62,7 +64,7 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', Illuminate\Foundation\Auth\User::class),
+            'model' => env('AUTH_MODEL', User::class),
         ],
 
         // 'users' => [

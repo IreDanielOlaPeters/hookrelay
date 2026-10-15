@@ -6,6 +6,7 @@ use App\Models\Connection;
 use App\Models\Delivery;
 use App\Models\Destination;
 use App\Models\WebhookEvent;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 it('stores the event and one pending delivery per enabled connection, returning 202', function () {
@@ -106,7 +107,7 @@ it('is atomic: if writing a delivery fails, the event is not stored either', fun
 
     $this->withoutExceptionHandling();
     expect(fn () => $this->call('POST', "/in/{$source->slug}", [], [], [], ['CONTENT_TYPE' => 'application/json'], '{"a":1}'))
-        ->toThrow(Illuminate\Database\QueryException::class, 'simulated outbox failure');
+        ->toThrow(QueryException::class, 'simulated outbox failure');
 
     expect(WebhookEvent::count())->toBe(0)->and(Delivery::count())->toBe(0);
 });
