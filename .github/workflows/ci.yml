@@ -90,9 +90,22 @@ jobs:
       - run: npm run build
 
   images:
-    name: Docker images build
+    name: Stack boot + k6 smoke (ingestion p95 < 100 ms)
     runs-on: ubuntu-24.04
+    env:
+      COMPOSE_PROJECT_NAME: hookrelay
     steps:
       - uses: actions/checkout@v7
       - run: docker compose config --quiet
       - run: docker compose build
+      - name: Boot the stack and wait for every healthcheck
+        run: docker compose up -d --wait --wait-timeout 300
+      - name: k6 smoke (fails if ingestion p95 >= 100 ms or any request fails)
+        run: |
+          docker run --rm --network hookrelay_default -v "$PWD/loadtest:/scripts" \
+            grafana/k6:2.3.0 run -e SOURCE=demo -e RATE=25 -e DURATION=30s /scripts/smoke.js
+      - name: Show service state and logs on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --tail=80

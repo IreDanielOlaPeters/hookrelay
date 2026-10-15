@@ -1,0 +1,3 @@
+drain	1	delivery capacity (first->last success)	92.6/s
+drain	2	delivery capacity (first->last success)	153.8/s
+drain	4	delivery capacity (first->last success)	238.1/s

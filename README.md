@@ -7,6 +7,8 @@ A self-hostable webhook relay. HookRelay receives webhooks from providers such a
 - **Dead letters and replay.** Deliveries that use up their attempts land in a dead-letter list, and you can replay them one at a time or in bulk.
 - **Dashboard.** You can browse every event, delivery and attempt, down to the raw headers and response bodies.
 
+> **Performance:** about **1,500 webhooks/s** peak ingestion (p95 ≤ 76 ms), a sustained 300/s at p95 ≈ 22 ms, and 93 → 238 deliveries/s with 1 → 4 workers, measured on one laptop. Details in [BENCHMARKS.md](BENCHMARKS.md).
+
 > Phase 1: the core engine. Multi-tenancy, billing, auth beyond a single admin token and object storage for large bodies are deliberately out of scope. Look for `TODO(...)` notes in the code where they will plug in.
 
 ## Quick start
@@ -281,6 +283,8 @@ Set these in the root `.env`; Compose reads them. Defaults are in brackets.
 | `RELAY_STUCK_AFTER_SECONDS` | How long a delivery may sit in `delivering` before it is recovered. [300] |
 | `RELAY_CIRCUIT_THRESHOLD`, `RELAY_CIRCUIT_OPEN_SECONDS` | Circuit breaker. [5 failures, 60 s] |
 | `WORKER_REPLICAS` | Number of delivery workers. [2] |
+| `DB_PERSISTENT` | Reuse one Postgres connection per API thread. Set to `true` for the `api` service in Compose; see [BENCHMARKS.md](BENCHMARKS.md) for why. [`false`] |
+| `LARAVEL_OPTIMIZE` | Cache config, routes and events when a container starts. Set to `false` when mounting the source for development. [`true`] |
 
 ## Development
 
@@ -293,13 +297,14 @@ api/              Laravel 12 app (PHP 8.3)
 dashboard/        Next.js 16 App Router (React 19) + Tailwind 4, Vitest
 mock-receiver/    zero-dependency Node test destination
 docs/api.md       management API contract
+loadtest/         k6 scenarios (steady, 10x burst, slow destination, peak/drain, CI smoke) + run.sh
 ```
 
 The API runs on Laravel 12, and `composer audit` reports no security advisories, with no ignores configured.
 
 The tests run against real Postgres and Redis, because `SKIP LOCKED`, the Lua token bucket and the circuit breaker need real backends. They use the `hookrelay_test` database and Redis DB 14. `tests/TestCase.php` refuses to run against any database whose name doesn't end in `_test`.
 
-CI (`.github/workflows/ci.yml`) runs `composer audit` and `npm audit --audit-level=high`, then Pest against Postgres and Redis service containers, along with Pint, ESLint, `tsc`, Vitest and `next build`. It also builds every Docker image. Dependabot (`.github/dependabot.yml`) opens weekly update PRs for Composer, npm, Docker base images and GitHub Actions.
+CI (`.github/workflows/ci.yml`) runs `composer audit` and `npm audit --audit-level=high`, then Pest against Postgres and Redis service containers, along with Pint, ESLint, `tsc`, Vitest and `next build`. It also builds every Docker image, boots the whole stack with `docker compose up --wait` (every healthcheck must pass), and runs a 30-second k6 smoke test that **fails the build if ingestion p95 reaches 100 ms**. Dependabot (`.github/dependabot.yml`) opens weekly update PRs for Composer, npm, Docker base images and GitHub Actions.
 
 The dashboard lints with ESLint 9 using typescript-eslint, react, react-hooks and jsx-a11y directly, not `eslint-config-next`. Every release of Next's ESLint plugin pins `fast-glob` → `micromatch` → `braces`, which has an advisory with no fixed version (GHSA-vfj7-8cjw-p6xm), so it can't pass `npm audit`. The trade-off is losing the `@next/next/*` rules.
 
