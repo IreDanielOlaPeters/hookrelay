@@ -4,6 +4,7 @@ use App\Enums\DeliveryStatus;
 use App\Models\Connection;
 use App\Models\Delivery;
 use App\Models\Destination;
+use App\Models\ReplayBatch;
 use App\Models\Source;
 use App\Models\User;
 use App\Models\WebhookEvent;
@@ -126,10 +127,12 @@ it('resets demo data nightly, keeping admins and the demo user', function () {
     [$source] = sourceWithDestinations();
     $this->call('POST', "/in/{$source->slug}", [], [], [], ['CONTENT_TYPE' => 'application/json'], '{"x":1}');
     app(CircuitBreaker::class)->recordFailure(Destination::first()->id);
+    ReplayBatch::create(['filters' => ['status' => 'dead'], 'status' => 'completed']);
 
     $this->artisan('relay:demo-reset')->assertSuccessful();
 
     expect(WebhookEvent::count())->toBe(0)
+        ->and(ReplayBatch::count())->toBe(0)
         ->and(Delivery::count())->toBe(0)
         ->and(Source::pluck('slug')->sort()->values()->all())->toBe(['demo', 'stripe-test'])
         ->and(User::find($admin->id))->not->toBeNull()

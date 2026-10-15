@@ -31,6 +31,7 @@ class RelayDemoReset extends Command
 
         DB::transaction(function () {
             // Cascades remove deliveries, attempts and connections.
+            DB::table('replay_batches')->delete();
             DB::table('events')->delete();
             DB::table('connections')->delete();
             DB::table('sources')->delete();
