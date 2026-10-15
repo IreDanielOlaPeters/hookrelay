@@ -27,7 +27,7 @@ export function AttemptTimeline({ attempts }: { attempts: Attempt[] }) {
         const pretty = prettyJson(body);
         return (
           <li key={a.id} className="mb-3 ml-4 last:mb-0">
-            <span className={`absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${o.dot}`} />
+            <span className={`absolute left-[-5px] mt-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${o.dot}`} />
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">
               <span className="text-xs text-gray-500">#{i + 1}</span>
               <Time iso={a.started_at} className="text-gray-700" />

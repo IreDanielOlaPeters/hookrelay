@@ -9,7 +9,8 @@ import { pageParam, param, type SearchParams } from '@/lib/params';
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Deliveries' };
 
-export default async function DeliveriesPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function DeliveriesPage(props: { searchParams: Promise<SearchParams> }) {
+  const searchParams = await props.searchParams;
   const status = param(searchParams, 'status');
   const destinationId = param(searchParams, 'destination_id');
   const page = pageParam(searchParams);

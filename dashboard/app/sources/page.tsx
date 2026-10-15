@@ -64,7 +64,7 @@ export default async function SourcesPage() {
                   </td>
                   <td><Badge>{s.provider}</Badge></td>
                   <td>
-                    <code className="mono select-all rounded bg-gray-50 px-1.5 py-0.5 text-gray-800">
+                    <code className="mono select-all rounded-sm bg-gray-50 px-1.5 py-0.5 text-gray-800">
                       {s.ingest_url}
                     </code>
                   </td>

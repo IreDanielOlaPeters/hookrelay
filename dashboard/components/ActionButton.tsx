@@ -1,6 +1,6 @@
 'use client';
 
-import { useFormState } from 'react-dom';
+import { useActionState } from 'react';
 import type { FormState } from '@/lib/form-state';
 import { SubmitButton } from './SubmitButton';
 
@@ -25,7 +25,7 @@ export function ActionButton({
   confirm?: string;
   className?: string;
 }) {
-  const [state, formAction] = useFormState(action, {});
+  const [state, formAction] = useActionState(action, {});
   return (
     <form
       action={formAction}

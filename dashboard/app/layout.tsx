@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <aside className="border-b border-gray-200 bg-white md:w-56 md:shrink-0 md:border-b-0 md:border-r">
             <div className="flex flex-col gap-3 px-4 py-3 md:sticky md:top-0 md:gap-6 md:py-6">
               <Link href="/" className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-gray-900 font-mono text-xs text-white">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-sm bg-gray-900 font-mono text-xs text-white">
                   HR
                 </span>
                 HookRelay

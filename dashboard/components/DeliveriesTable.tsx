@@ -61,7 +61,7 @@ export function DeliveriesTable({
               <td><Time iso={d.next_attempt_at} /></td>
               <td>
                 {d.last_error ? (
-                  <span className="mono block max-w-[22rem] truncate text-red-700" title={d.last_error}>
+                  <span className="mono block max-w-88 truncate text-red-700" title={d.last_error}>
                     {d.last_error}
                   </span>
                 ) : (

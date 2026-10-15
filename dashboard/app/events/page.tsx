@@ -14,7 +14,8 @@ import { pageParam, param, type SearchParams } from '@/lib/params';
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Events' };
 
-export default async function EventsPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function EventsPage(props: { searchParams: Promise<SearchParams> }) {
+  const searchParams = await props.searchParams;
   const sourceId = param(searchParams, 'source_id');
   const from = param(searchParams, 'from');
   const to = param(searchParams, 'to');

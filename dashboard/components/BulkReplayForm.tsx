@@ -1,6 +1,6 @@
 'use client';
 
-import { useFormState } from 'react-dom';
+import { useActionState } from 'react';
 import { bulkReplayAction } from '@/app/actions';
 import { FieldError, FormMessage } from './FieldError';
 import { SubmitButton } from './SubmitButton';
@@ -15,7 +15,7 @@ export function BulkReplayForm({
   destinations: Option[];
   defaults: { destination_id?: string; from?: string; to?: string };
 }) {
-  const [state, action] = useFormState(bulkReplayAction, {});
+  const [state, action] = useActionState(bulkReplayAction, {});
   return (
     <form
       action={action}
@@ -32,7 +32,7 @@ export function BulkReplayForm({
             id="bulk-dest"
             name="destination_id"
             className="input"
-            defaultValue={defaults.destination_id ?? ''}
+            defaultValue={state?.values?.destination_id ?? defaults.destination_id ?? ''}
           >
             <option value="">All destinations</option>
             {destinations.map((d) => (
@@ -43,12 +43,12 @@ export function BulkReplayForm({
         </div>
         <div>
           <label className="label" htmlFor="bulk-from">From</label>
-          <input id="bulk-from" name="from" type="date" className="input" defaultValue={defaults.from} />
+          <input id="bulk-from" name="from" type="date" className="input" defaultValue={state?.values?.from ?? defaults.from} />
           <FieldError state={state} name="from" />
         </div>
         <div>
           <label className="label" htmlFor="bulk-to">To</label>
-          <input id="bulk-to" name="to" type="date" className="input" defaultValue={defaults.to} />
+          <input id="bulk-to" name="to" type="date" className="input" defaultValue={state?.values?.to ?? defaults.to} />
           <FieldError state={state} name="to" />
         </div>
         <SubmitButton pendingLabel="Replaying…">Bulk replay dead</SubmitButton>

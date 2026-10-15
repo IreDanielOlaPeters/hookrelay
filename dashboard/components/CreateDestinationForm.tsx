@@ -1,6 +1,6 @@
 'use client';
 
-import { useFormState } from 'react-dom';
+import { useActionState } from 'react';
 import { createDestinationAction } from '@/app/actions';
 import { FieldError, FormMessage } from './FieldError';
 import { SubmitButton } from './SubmitButton';
@@ -17,7 +17,7 @@ const FIELDS = [
 ];
 
 export function CreateDestinationForm() {
-  const [state, action] = useFormState(createDestinationAction, {});
+  const [state, action] = useActionState(createDestinationAction, {});
   const ref = useResetOnSuccess(state);
   return (
     <form ref={ref} action={action} className="space-y-3 p-4">
@@ -25,7 +25,7 @@ export function CreateDestinationForm() {
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="dst-name">Name</label>
-          <input id="dst-name" name="name" required className="input" placeholder="Billing service" />
+          <input id="dst-name" name="name" required className="input" placeholder="Billing service" defaultValue={state?.values?.name} />
           <FieldError state={state} name="name" />
         </div>
         <div>
@@ -33,6 +33,7 @@ export function CreateDestinationForm() {
           <input
             id="dst-url"
             name="url"
+            defaultValue={state?.values?.url}
             type="url"
             required
             className="input font-mono"
@@ -54,22 +55,22 @@ export function CreateDestinationForm() {
         </div>
         <div>
           <label className="label" htmlFor="dst-timeout">Timeout (ms)</label>
-          <input id="dst-timeout" name="timeout_ms" type="number" min={1} className="input" placeholder="10000" />
+          <input id="dst-timeout" name="timeout_ms" defaultValue={state?.values?.timeout_ms} type="number" min={1} className="input" placeholder="10000" />
           <FieldError state={state} name="timeout_ms" />
         </div>
         <div>
           <label className="label" htmlFor="dst-rps">Rate limit (req/s, optional)</label>
-          <input id="dst-rps" name="rate_limit_rps" type="number" min={1} className="input" placeholder="unlimited" />
+          <input id="dst-rps" name="rate_limit_rps" defaultValue={state?.values?.rate_limit_rps} type="number" min={1} className="input" placeholder="unlimited" />
           <FieldError state={state} name="rate_limit_rps" />
         </div>
         <div>
           <label className="label" htmlFor="dst-max">Max attempts</label>
-          <input id="dst-max" name="max_attempts" type="number" min={1} className="input" placeholder="6" />
+          <input id="dst-max" name="max_attempts" defaultValue={state?.values?.max_attempts} type="number" min={1} className="input" placeholder="6" />
           <FieldError state={state} name="max_attempts" />
         </div>
         <div className="flex items-end">
           <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-            <input name="enabled" type="checkbox" defaultChecked className="h-4 w-4 rounded border-gray-300" />
+            <input name="enabled" type="checkbox" defaultChecked={state?.values ? state.values.enabled === 'on' : true} className="h-4 w-4 rounded-sm border-gray-300" />
             Enabled
           </label>
           <FieldError state={state} name="enabled" />

@@ -13,7 +13,7 @@ import {
   type SourceInput,
 } from '@/lib/api';
 import { dateBound } from '@/lib/format';
-import type { FormState } from '@/lib/form-state';
+import { keepValues, type FormState } from '@/lib/form-state';
 import { withQuery } from '@/lib/params';
 
 // ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ export async function createSourceAction(_prev: FormState, fd: FormData): Promis
     signing_secret: str(fd, 'signing_secret'),
     dedupe_window_seconds: int(fd, 'dedupe_window_seconds'),
   };
-  return run(() => api.createSource(input), `Source “${input.name}” created.`);
+  return keepValues(fd, await run(() => api.createSource(input), `Source “${input.name}” created.`));
 }
 
 export async function deleteSourceAction(_prev: FormState, fd: FormData): Promise<FormState> {
@@ -103,7 +103,10 @@ export async function createDestinationAction(_prev: FormState, fd: FormData): P
     max_attempts: int(fd, 'max_attempts'),
     enabled: bool(fd, 'enabled'),
   };
-  return run(() => api.createDestination(input), `Destination “${input.name}” created.`);
+  return keepValues(
+    fd,
+    await run(() => api.createDestination(input), `Destination “${input.name}” created.`),
+  );
 }
 
 export async function setDestinationEnabledAction(
@@ -126,7 +129,7 @@ export async function deleteDestinationAction(_prev: FormState, fd: FormData): P
 // ---------------------------------------------------------------------------
 
 export async function createConnectionAction(_prev: FormState, fd: FormData): Promise<FormState> {
-  return run(
+  const state = await run(
     () =>
       api.createConnection({
         source_id: str(fd, 'source_id') ?? '',
@@ -135,6 +138,7 @@ export async function createConnectionAction(_prev: FormState, fd: FormData): Pr
       }),
     'Connection created.',
   );
+  return keepValues(fd, state);
 }
 
 export async function setConnectionEnabledAction(
@@ -184,7 +188,7 @@ export async function bulkReplayAction(_prev: FormState, fd: FormData): Promise<
   try {
     replayed = (await api.bulkReplay(input)).replayed;
   } catch (err) {
-    return failure(err);
+    return keepValues(fd, failure(err));
   }
 
   revalidatePath('/', 'layout');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useFormState } from 'react-dom';
+import { useActionState } from 'react';
 import { createSourceAction } from '@/app/actions';
 import { FieldError, FormMessage } from './FieldError';
 import { SubmitButton } from './SubmitButton';
@@ -10,7 +10,7 @@ const PROVIDERS = ['generic', 'stripe', 'github', 'shopify', 'woocommerce'];
 const FIELDS = ['name', 'slug', 'provider', 'signing_secret', 'dedupe_window_seconds'];
 
 export function CreateSourceForm() {
-  const [state, action] = useFormState(createSourceAction, {});
+  const [state, action] = useActionState(createSourceAction, {});
   const ref = useResetOnSuccess(state);
   return (
     <form ref={ref} action={action} className="space-y-3 p-4">
@@ -18,7 +18,7 @@ export function CreateSourceForm() {
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="src-name">Name</label>
-          <input id="src-name" name="name" required className="input" placeholder="Stripe production" />
+          <input id="src-name" name="name" required className="input" placeholder="Stripe production" defaultValue={state?.values?.name} />
           <FieldError state={state} name="name" />
         </div>
         <div>
@@ -26,6 +26,7 @@ export function CreateSourceForm() {
           <input
             id="src-slug"
             name="slug"
+            defaultValue={state?.values?.slug}
             required
             pattern="[a-z0-9][a-z0-9_-]*"
             title="Lowercase letters, digits, dashes and underscores"
@@ -36,7 +37,7 @@ export function CreateSourceForm() {
         </div>
         <div>
           <label className="label" htmlFor="src-provider">Provider</label>
-          <select id="src-provider" name="provider" className="input" defaultValue="generic">
+          <select id="src-provider" name="provider" className="input" defaultValue={state?.values?.provider ?? 'generic'}>
             {PROVIDERS.map((p) => (
               <option key={p} value={p}>{p}</option>
             ))}
@@ -48,6 +49,7 @@ export function CreateSourceForm() {
           <input
             id="src-dedupe"
             name="dedupe_window_seconds"
+            defaultValue={state?.values?.dedupe_window_seconds}
             type="number"
             min={0}
             className="input"

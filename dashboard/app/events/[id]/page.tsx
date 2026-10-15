@@ -19,7 +19,7 @@ function Meta({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
       <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</dt>
-      <dd className="mt-0.5 break-words text-sm text-gray-900">{children}</dd>
+      <dd className="mt-0.5 wrap-break-word text-sm text-gray-900">{children}</dd>
     </div>
   );
 }
@@ -72,7 +72,8 @@ function DeliveryCard({ d }: { d: Delivery }) {
   );
 }
 
-export default async function EventPage({ params }: { params: { id: string } }) {
+export default async function EventPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const res = await load(api.getEvent(params.id));
   if (!res.ok) {
     if (res.error.kind === 'not_found') notFound();
@@ -138,7 +139,7 @@ export default async function EventPage({ params }: { params: { id: string } }) 
               {headerRows.map((h) => (
                 <tr key={h.key}>
                   <td className="mono w-1/3 font-medium text-gray-900">{h.name}</td>
-                  <td className="mono !whitespace-normal break-all">{h.value}</td>
+                  <td className="mono whitespace-normal! break-all">{h.value}</td>
                 </tr>
               ))}
               {headerRows.length === 0 && (
@@ -163,7 +164,7 @@ export default async function EventPage({ params }: { params: { id: string } }) 
             The API returned this body base64-encoded (body_encoding: base64). It is shown raw, without decoding.
           </p>
         )}
-        <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-xs text-gray-800">
+        <pre className="max-h-128 overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-xs text-gray-800">
           {e.body ? (pretty ?? e.body) : <span className="text-gray-400">(empty)</span>}
         </pre>
       </section>

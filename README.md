@@ -25,7 +25,8 @@ The first `docker compose up` builds the images, which takes a few minutes. Migr
 |---|---|
 | `make up` / `make down` | Build and start / stop the stack |
 | `make seed` | Create the demo setup (idempotent) |
-| `make test` | Run the Pest suite inside the `api` container, against a separate `hookrelay_test` database |
+| `make test` | Run the Pest suite inside the `api` container (against a separate `hookrelay_test` database) and the dashboard's Vitest tests |
+| `make audit` | `composer audit` and `npm audit`, failing on high or critical issues |
 | `make logs` | Follow the logs of every service |
 | `make lint` | Run Pint and ESLint |
 
@@ -66,7 +67,7 @@ flowchart LR
 | `worker` (×2) | `php artisan queue:work redis`: performs the HTTP deliveries. Scale it with `WORKER_REPLICAS`. |
 | `postgres` | Source of truth: the events, deliveries and attempts tables. |
 | `redis` | Job queue, per-destination token buckets and circuit-breaker state. |
-| `dashboard` | Next.js 14 UI. It calls the API server-side with `ADMIN_TOKEN`, so the token never reaches the browser. |
+| `dashboard` | Next.js 16 UI. It calls the API server-side with `ADMIN_TOKEN`, so the token never reaches the browser. |
 | `mock-receiver` | A test destination: `/ok` (200), `/fail` (500), `/flaky` (50 % 500), `/timeout` (hangs), or `/any?mode=…&status=…&delay_ms=…`. `GET /_received` shows the last 100 requests. |
 
 ### Lifecycle of a webhook
@@ -202,7 +203,7 @@ api/              Laravel 12 app (PHP 8.3)
   app/Services/Delivery/   Dispatcher, Deliverer, Backoff, TokenBucket, CircuitBreaker, Replayer
   app/Jobs/DeliverWebhook  thin queue wrapper around Deliverer
   tests/                   Pest: unit (signatures, backoff) + feature (Postgres + Redis)
-dashboard/        Next.js 14 App Router + Tailwind
+dashboard/        Next.js 16 App Router (React 19) + Tailwind 4, Vitest
 mock-receiver/    zero-dependency Node test destination
 docs/api.md       management API contract
 ```
@@ -211,7 +212,9 @@ The API runs on Laravel 12, and `composer audit` reports no security advisories,
 
 The tests run against real Postgres and Redis, because `SKIP LOCKED`, the Lua token bucket and the circuit breaker need real backends. They use the `hookrelay_test` database and Redis DB 14. `tests/TestCase.php` refuses to run against any database whose name doesn't end in `_test`.
 
-CI (`.github/workflows/ci.yml`) runs Pest against Postgres and Redis service containers, along with Pint, ESLint, `tsc` and `next build`. It also builds every Docker image.
+CI (`.github/workflows/ci.yml`) runs `composer audit` and `npm audit --audit-level=high`, then Pest against Postgres and Redis service containers, along with Pint, ESLint, `tsc`, Vitest and `next build`. It also builds every Docker image. Dependabot (`.github/dependabot.yml`) opens weekly update PRs for Composer, npm, Docker base images and GitHub Actions.
+
+The dashboard lints with ESLint 9 using typescript-eslint, react, react-hooks and jsx-a11y directly, not `eslint-config-next`. Every release of Next's ESLint plugin pins `fast-glob` → `micromatch` → `braces`, which has an advisory with no fixed version (GHSA-vfj7-8cjw-p6xm), so it can't pass `npm audit`. The trade-off is losing the `@next/next/*` rules.
 
 ### Known gaps / roadmap
 
