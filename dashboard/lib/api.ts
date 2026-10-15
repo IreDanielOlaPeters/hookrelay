@@ -1,9 +1,12 @@
 import 'server-only';
+import { redirect, unstable_rethrow } from 'next/navigation';
+import { cache } from 'react';
+import { sessionToken } from '@/lib/session';
 
 /*
  * Typed server-side client for the HookRelay management API (docs/api.md).
- * This module must never be imported from a client component: it reads
- * ADMIN_TOKEN from the server environment.
+ * Calls carry the signed-in user's session token (httpOnly cookie), so the API enforces
+ * that user's role. This module must never be imported from a client component.
  */
 
 // ---------------------------------------------------------------------------
@@ -166,6 +169,32 @@ export interface BulkReplayInput {
   to?: string;
 }
 
+export type Role = 'admin' | 'demo';
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: Role;
+}
+
+export interface Me {
+  user: User;
+  demo_mode: boolean;
+}
+
+export interface LoginResponse {
+  token: string;
+  expires_at: string;
+  user: User;
+}
+
+export interface DemoInfo {
+  demo_mode: boolean;
+  email?: string;
+  password?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -208,18 +237,21 @@ const TIMEOUT_MS = 10_000;
 async function request<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
-  opts: { query?: Query; body?: unknown } = {},
+  opts: { query?: Query; body?: unknown; auth?: boolean } = {},
 ): Promise<T> {
+  const auth = opts.auth ?? true;
   const base = apiBaseUrl();
   const url = new URL(base + path);
   for (const [k, v] of Object.entries(opts.query ?? {})) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   }
 
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    Authorization: `Bearer ${process.env.ADMIN_TOKEN ?? ''}`,
-  };
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (auth) {
+    const token = await sessionToken();
+    if (!token) redirect('/login');
+    headers.Authorization = `Bearer ${token}`;
+  }
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
   let res: Response;
@@ -247,6 +279,9 @@ async function request<T>(
     }
   }
 
+  // Session expired or revoked: back to the login page.
+  if (res.status === 401 && auth) redirect('/login?expired=1');
+
   if (!res.ok) {
     const body = (json ?? {}) as { message?: string; errors?: ValidationErrors };
     throw new ApiError(
@@ -271,12 +306,24 @@ function unwrapList<T>(res: Data<T[]> | T[]): T[] {
 }
 
 export const api = {
+  // Auth
+  login: (email: string, password: string) =>
+    request<LoginResponse>('POST', '/api/auth/login', { body: { email, password }, auth: false }),
+  demoInfo: () => request<DemoInfo>('GET', '/api/auth/demo', { auth: false }),
+  logout: () => request<void>('POST', '/api/auth/logout'),
+
   stats: () => request<Stats>('GET', '/api/stats'),
 
   // Sources
   listSources: async () => unwrapList(await request<Data<Source[]> | Source[]>('GET', '/api/sources')),
   createSource: async (input: SourceInput) =>
     (await request<Data<Source>>('POST', '/api/sources', { body: input })).data,
+  sendTestWebhook: (id: string, body?: string) =>
+    request<{ event_id: string; deliveries: number }>(
+      'POST',
+      `/api/sources/${encodeURIComponent(id)}/test`,
+      { body: body ? { body } : {} },
+    ),
   deleteSource: (id: string) =>
     request<void>('DELETE', `/api/sources/${encodeURIComponent(id)}`),
 
@@ -372,6 +419,16 @@ export async function load<T>(promise: Promise<T>): Promise<Loaded<T>> {
   try {
     return { ok: true, data: await promise };
   } catch (err) {
+    // Let Next's redirect (e.g. to /login on 401) and not-found errors propagate.
+    unstable_rethrow(err);
     return { ok: false, error: describeError(err) };
   }
+}
+
+/** The signed-in user, fetched once per request (redirects to /login when the session is gone). */
+export const getMe = cache(() => request<Me>('GET', '/api/auth/me'));
+
+/** Only admins may delete data or change settings; the API enforces it, the UI hides the controls. */
+export function canManage(me: Me): boolean {
+  return me.user.role === 'admin';
 }

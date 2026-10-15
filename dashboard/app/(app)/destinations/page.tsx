@@ -6,14 +6,15 @@ import { CircuitBadge } from '@/components/CircuitBadge';
 import { CreateDestinationForm } from '@/components/CreateDestinationForm';
 import { EmptyRow } from '@/components/EmptyRow';
 import { PageHeader } from '@/components/PageHeader';
-import { api, load } from '@/lib/api';
+import { api, canManage, getMe, load } from '@/lib/api';
 import { formatDuration } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Destinations' };
 
 export default async function DestinationsPage() {
-  const destinations = await load(api.listDestinations());
+  const [me, destinations] = await Promise.all([getMe(), load(api.listDestinations())]);
+  const manage = canManage(me);
 
   return (
     <>
@@ -55,7 +56,7 @@ export default async function DestinationsPage() {
                     <td className="tabular-nums">{d.max_attempts}</td>
                     <td>{d.has_auth_header ? <Badge tone="blue">header</Badge> : <Badge>none</Badge>}</td>
                     <td className="text-right">
-                      <div className="inline-flex gap-2">
+                      {manage && <div className="inline-flex gap-2">
                         <ActionButton
                           action={setDestinationEnabledAction}
                           fields={{ id: d.id, enabled: !d.enabled }}
@@ -69,7 +70,7 @@ export default async function DestinationsPage() {
                           className="btn-danger btn-sm"
                           confirm={`Delete destination “${d.name}”?`}
                         />
-                      </div>
+                      </div>}
                     </td>
                   </tr>
                 ))}
@@ -83,7 +84,7 @@ export default async function DestinationsPage() {
         <div className="card-header">
           <h2 className="card-title">New destination</h2>
         </div>
-        <CreateDestinationForm />
+        <CreateDestinationForm demo={!manage} />
       </section>
     </>
   );

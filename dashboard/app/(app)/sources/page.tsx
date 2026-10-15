@@ -8,17 +8,19 @@ import { ApiErrorPanel } from '@/components/ApiErrorPanel';
 import { Badge } from '@/components/Badge';
 import { CreateConnectionForm } from '@/components/CreateConnectionForm';
 import { CreateSourceForm } from '@/components/CreateSourceForm';
+import { SendTestWebhookForm } from '@/components/SendTestWebhookForm';
 import { EmptyRow } from '@/components/EmptyRow';
 import { PageHeader } from '@/components/PageHeader';
 import { Time } from '@/components/Time';
-import { api, load } from '@/lib/api';
+import { api, canManage, getMe, load } from '@/lib/api';
 import { formatSeconds } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Sources' };
 
 export default async function SourcesPage() {
-  const [sources, destinations, connections] = await Promise.all([
+  const [me, sources, destinations, connections] = await Promise.all([
+    getMe(),
     load(api.listSources()),
     load(api.listDestinations()),
     load(api.listConnections()),
@@ -32,6 +34,8 @@ export default async function SourcesPage() {
       </>
     );
   }
+
+  const manage = canManage(me);
 
   return (
     <>
@@ -74,14 +78,14 @@ export default async function SourcesPage() {
                   <td className="tabular-nums">{formatSeconds(s.dedupe_window_seconds)}</td>
                   <td><Time iso={s.created_at} /></td>
                   <td className="text-right">
-                    <ActionButton
+                    {manage && <ActionButton
                       action={deleteSourceAction}
                       fields={{ id: s.id }}
                       label="Delete"
                       pendingLabel="Deleting…"
                       className="btn-danger btn-sm"
                       confirm={`Delete source “${s.name}”? Its ingest URL will stop accepting webhooks.`}
-                    />
+                    />}
                   </td>
                 </tr>
               ))}
@@ -89,6 +93,15 @@ export default async function SourcesPage() {
           </table>
         </div>
       </section>
+
+      {sources.data.length > 0 && (
+        <section className="card mt-6">
+          <div className="card-header">
+            <h2 className="card-title">Send a test webhook</h2>
+          </div>
+          <SendTestWebhookForm sources={sources.data.map((s) => ({ id: s.id, name: `${s.name} (${s.slug})` }))} />
+        </section>
+      )}
 
       <section className="card mt-6">
         <div className="card-header">
@@ -133,7 +146,7 @@ export default async function SourcesPage() {
                     </td>
                     <td><Time iso={c.created_at} /></td>
                     <td className="text-right">
-                      <div className="inline-flex gap-2">
+                      {manage && <div className="inline-flex gap-2">
                         <ActionButton
                           action={setConnectionEnabledAction}
                           fields={{ id: c.id, enabled: !c.enabled }}
@@ -147,7 +160,7 @@ export default async function SourcesPage() {
                           className="btn-danger btn-sm"
                           confirm={`Disconnect ${c.source?.name} from ${c.destination?.name}?`}
                         />
-                      </div>
+                      </div>}
                     </td>
                   </tr>
                 ))}

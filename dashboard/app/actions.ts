@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, unstable_rethrow } from 'next/navigation';
 import {
   api,
   ApiError,
@@ -14,6 +14,8 @@ import {
 } from '@/lib/api';
 import { dateBound } from '@/lib/format';
 import { keepValues, type FormState } from '@/lib/form-state';
+import { safeNext } from '@/lib/security';
+import { clearSessionCookie, setSessionCookie } from '@/lib/session';
 import { withQuery } from '@/lib/params';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +42,8 @@ function bool(fd: FormData, key: string): boolean {
 }
 
 function failure(err: unknown): FormState {
+  // A redirect thrown inside an API call (expired session -> /login) must not become a form error.
+  unstable_rethrow(err);
   if (err instanceof ApiError) {
     if (err.status === 422) {
       return { ok: false, message: err.message || 'Please fix the errors below.', errors: err.errors };
@@ -87,6 +91,49 @@ export async function createSourceAction(_prev: FormState, fd: FormData): Promis
 
 export async function deleteSourceAction(_prev: FormState, fd: FormData): Promise<FormState> {
   return run(async () => api.deleteSource(requireId(fd)), 'Source deleted.');
+}
+
+export async function sendTestWebhookAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  let eventId: string;
+  try {
+    eventId = (await api.sendTestWebhook(requireId(fd), str(fd, 'body'))).event_id;
+  } catch (err) {
+    return keepValues(fd, failure(err));
+  }
+  revalidatePath('/', 'layout');
+  redirect(`/events/${eventId}`);
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export async function loginAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const email = str(fd, 'email') ?? '';
+  const password = typeof fd.get('password') === 'string' ? (fd.get('password') as string) : '';
+  try {
+    const session = await api.login(email, password);
+    await setSessionCookie(session.token, session.expires_at);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 429) {
+      return keepValues(fd, { ok: false, message: 'Too many sign-in attempts. Wait a minute and try again.' });
+    }
+    if (err instanceof ApiError && err.status === 422) {
+      return keepValues(fd, { ok: false, message: err.message || 'These credentials do not match our records.' });
+    }
+    return keepValues(fd, failure(err));
+  }
+  redirect(safeNext(str(fd, 'next')));
+}
+
+export async function logoutAction(): Promise<void> {
+  try {
+    await api.logout();
+  } catch {
+    // Already expired or API unreachable: clearing the cookie is what matters.
+  }
+  await clearSessionCookie();
+  redirect('/login');
 }
 
 // ---------------------------------------------------------------------------

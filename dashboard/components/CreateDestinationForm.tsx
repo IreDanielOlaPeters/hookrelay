@@ -16,11 +16,18 @@ const FIELDS = [
   'enabled',
 ];
 
-export function CreateDestinationForm() {
+export function CreateDestinationForm({ demo = false }: { demo?: boolean }) {
   const [state, action] = useActionState(createDestinationAction, {});
   const ref = useResetOnSuccess(state);
   return (
     <form ref={ref} action={action} className="space-y-3 p-4">
+      {demo && (
+        <p className="text-xs text-gray-500">
+          Demo mode: destinations must point at the mock receiver, e.g.{' '}
+          <span className="mono">http://mock-receiver:4000/ok</span>, <span className="mono">/flaky</span> or{' '}
+          <span className="mono">/fail</span>.
+        </p>
+      )}
       <FormMessage state={state} fields={FIELDS} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -37,7 +44,7 @@ export function CreateDestinationForm() {
             type="url"
             required
             className="input font-mono"
-            placeholder="https://example.com/webhooks"
+            placeholder={demo ? 'http://mock-receiver:4000/ok' : 'https://example.com/webhooks'}
           />
           <FieldError state={state} name="url" />
         </div>
