@@ -4,7 +4,10 @@ set -e
 # Cache config, routes and events for this container's environment (skip with LARAVEL_OPTIMIZE=false,
 # e.g. when the source is mounted for development).
 if [ "${LARAVEL_OPTIMIZE:-true}" = "true" ]; then
-  php artisan optimize --no-interaction >/dev/null
+  # Not `optimize`: that also compiles views, and the API has none (resources/views isn't in git).
+  php artisan config:cache --no-interaction >/dev/null
+  php artisan route:cache --no-interaction >/dev/null
+  php artisan event:cache --no-interaction >/dev/null
 fi
 
 # Refuse to run production with development-default secrets (APP_KEY, ADMIN_TOKEN, RELAY_OUTBOUND_SECRET).
