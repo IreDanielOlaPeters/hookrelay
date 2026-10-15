@@ -73,6 +73,15 @@ Event detail (`GET /api/events/{id}`) adds `"headers": {"name": ["value", ...]}`
 ```
 `attempts` is included on `GET /api/deliveries/{id}`, on replay responses and inside event detail.
 
+**ReplayBatch**
+```json
+{"id":"uuid","status":"queued|running|completed|failed","filters":{"status":"dead","destination_id":"uuid"},
+ "total":1203,"processed":500,"replayed":498,"progress":0.4156,"error":null,
+ "created_at":"...","started_at":"...","finished_at":null}
+```
+
+**Delivery statuses:** `pending`, `delivering`, `succeeded`, `failed` (permanent 4xx other than 408/429, or an SSRF-blocked target; not retried) and `dead` (out of retries).
+
 **Paginated lists** use Laravel's shape:
 ```json
 {"data":[...],"links":{"first":"...","last":"...","prev":null,"next":"..."},
@@ -98,7 +107,9 @@ Event detail (`GET /api/events/{id}`) adds `"headers": {"name": ["value", ...]}`
 | GET | `/api/deliveries` | paginated; `?status=&destination_id=&event_id=&has_error=1&page=&per_page=` newest first (by updated_at) |
 | GET | `/api/deliveries/{id}` | with attempts |
 | POST | `/api/deliveries/{id}/replay` | → `{data: Delivery}`; 409 if currently `delivering` |
-| POST | `/api/deliveries/replay` | `{status?: "dead" (default) \| "failed" \| "succeeded", destination_id?, from?, to?}` → `{"replayed": 12}` |
+| POST | `/api/deliveries/replay` | `{status?: "dead" (default) \| "failed" \| "succeeded", destination_id?, from?, to?}` → `202 {data: ReplayBatch}`. Runs as a queued job |
+| GET | `/api/replay-batches` | The 20 most recent batches |
+| GET | `/api/replay-batches/{id}` | `{data: ReplayBatch}`, for polling progress |
 | GET | `/api/stats` | see below |
 
 **Stats** (last 24 h, by delivery `created_at`):

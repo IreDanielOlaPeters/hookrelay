@@ -83,7 +83,7 @@ flowchart LR
 | `postgres` | Source of truth: the events, deliveries and attempts tables. |
 | `redis` | Job queue, per-destination token buckets and circuit-breaker state. |
 | `dashboard` | Next.js 16 UI behind a login. It calls the API server-side with the signed-in user's session token, kept in an httpOnly cookie. |
-| `cron` | `php artisan schedule:work`: scheduled tasks such as the nightly demo reset. |
+| `cron` | `php artisan schedule:work`: `relay:prune` at 02:30 UTC daily and, in demo mode, the demo reset at 03:00 UTC. |
 | `mock-receiver` | A test destination: `/ok` (200), `/fail` (500), `/flaky` (50 % 500), `/timeout` (hangs), or `/any?mode=…&status=…&delay_ms=…`. `GET /_received` shows the last 100 requests. |
 
 ### Lifecycle of a webhook
@@ -104,12 +104,27 @@ flowchart LR
    4. Records an `attempts` row for every try.
 4. **Outcome.**
    - A `2xx` response → `succeeded`.
-   - Anything else, including timeouts → `attempt_count + 1`. If that's still below `max_attempts`, the delivery goes back to `pending` with `next_attempt_at = now + random(0, min(6h, 30s × 4^(n-1)))` (full jitter). Otherwise → `dead`.
+   - A permanent `4xx`, meaning any 4xx except `408` and `429`, or a target blocked by the SSRF guard → `failed` straight away, with no retries.
+   - Anything else, including `5xx`, `408`, `429`, timeouts and connection errors → `attempt_count + 1`. If that's still below `max_attempts`, the delivery goes back to `pending` with `next_attempt_at = now + random(0, min(6h, 30s × 4^(n-1)))` (full jitter). Otherwise → `dead`.
 5. **Replay.**
    - `POST /api/deliveries/{id}/replay` resets one delivery to `pending` with a fresh attempt budget. Its earlier attempts stay in `attempts` as history.
-   - `POST /api/deliveries/replay` does the same in bulk, in chunks of 500, for every delivery matching `status` (default `dead`), `destination_id` and a `from`/`to` date range on the delivery's creation time.
+   - `POST /api/deliveries/replay` does the same in bulk for every delivery matching `status` (`dead` by default, or `failed`), `destination_id` and a `from`/`to` date range on the delivery's creation time. It returns `202` with a **replay batch** at once. A queued job then works through the matches in chunks of 500 and records `total`, `processed` and `replayed` in `replay_batches`. The dashboard shows a live progress bar.
+6. **Retention.** `relay:prune` runs daily at 02:30 UTC from the `cron` service. It deletes events older than `RELAY_RETENTION_DAYS` (default 7), with their deliveries and attempts, in batches of 1,000. It **never** deletes an event that still has an undelivered delivery (`pending`, `delivering`, `failed` or `dead`), and never before its source's dedupe window has passed. It also clears expired sessions and old finished replay batches. Run `php artisan relay:prune --dry-run` to see what it would delete.
 
-Delivery statuses: `pending` → `delivering` → `succeeded` | `pending` (retry) | `dead`. The `failed` status is reserved for terminal failures that don't retry. Phase 1 retries every failure until `dead`, so nothing uses `failed` yet.
+Delivery statuses: `pending` → `delivering` → `succeeded` | `pending` (retry) | `failed` | `dead`.
+
+#### Decision: `failed` means "permanent, don't retry"
+
+Phase 1 reserved `failed` without using it. Phase 2 gives it a meaning instead of removing it. Retrying a request the destination has rejected as invalid wastes up to six attempts and several hours, and it hides misconfigurations, such as a wrong URL (`404`) or bad credentials (`401`/`403`), behind a long retry tail. So:
+
+| Outcome | Status | Retried? | Circuit breaker |
+|---|---|---|---|
+| `2xx` | `succeeded` | — | success |
+| `4xx` except `408`/`429` | `failed` | no | success (the destination is up) |
+| SSRF guard blocked the address | `failed` | no | unchanged |
+| `5xx`, `408`, `429`, timeout, connection error, DNS failure | `pending` → … → `dead` | yes, with backoff | failure |
+
+`failed` and `dead` deliveries both appear in the dashboard's dead-letter view, on separate tabs, and both can be replayed once the cause is fixed.
 
 ### Signatures and idempotency keys
 
@@ -199,6 +214,8 @@ curl -s "$HR/api/stats" -H "$AUTH"                          # 24 h counts by sta
 curl -s -X POST "$HR/api/deliveries/<delivery uuid>/replay" -H "$AUTH"
 curl -s -X POST "$HR/api/deliveries/replay" -H "$AUTH" -H "$JSON" \
   -d '{"status":"dead","destination_id":"<destination uuid>","from":"2026-10-01","to":"2026-10-15"}'
+# → 202 {"data":{"id":"<batch uuid>","status":"queued",...}}; poll for progress:
+curl -s "$HR/api/replay-batches/<batch uuid>" -H "$AUTH"
 ```
 
 ## Configuration
@@ -212,6 +229,7 @@ Set these in the root `.env`; Compose reads them. Defaults are in brackets.
 | `DEMO_MODE` | Public demo: demo user, banner, nightly reset. **Set `false` for real installs.** [`true`] |
 | `DEMO_DESTINATION_HOSTS` | Hosts the demo user may create destinations on. [`mock-receiver`] |
 | `RELAY_SESSION_MINUTES` | Dashboard session lifetime. [720] |
+| `RELAY_RETENTION_DAYS` | `relay:prune` keeps events this long, and never deletes undelivered ones. [7] |
 | `RELAY_SSRF_ALLOWLIST` | Internal destinations to allow (hostnames, `*.suffix`, IPs, CIDRs). [`mock-receiver`] |
 | `RELAY_MAX_BODY_BYTES` | Max webhook body; larger requests get `413`. [2097152] |
 | `RELAY_INGEST_DEFAULT_RPS` | Per-source ingestion rate limit when the source sets none; `429` beyond it. [unlimited] |
@@ -246,8 +264,6 @@ The dashboard lints with ESLint 9 using typescript-eslint, react, react-hooks an
 ### Known gaps / roadmap
 
 - **Auth is deliberately simple:** admin and demo roles, with no per-user permissions, password reset or SSO. *TODO(auth)*
-- **No retention or pruning job** for old events and attempts yet. *TODO(retention)*
-- **Bulk replay runs synchronously,** in chunks. Very large replays should move to a queued job. *TODO(scale)*
 - Multi-tenancy, billing and a WordPress plugin are out of scope for Phase 1. *TODO(multi-tenancy)*
 
 ## License

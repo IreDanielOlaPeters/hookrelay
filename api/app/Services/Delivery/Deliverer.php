@@ -85,6 +85,7 @@ class Deliverer
         $status = null;
         $responseBody = null;
         $error = null;
+        $permanent = false;
 
         try {
             // SSRF guard at delivery time, then pin the connection to the IP we just checked so a
@@ -107,9 +108,11 @@ class Deliverer
             $responseBody = $this->truncate($response->body());
             if (! $response->successful()) {
                 $error = "HTTP {$status}";
+                $permanent = self::isPermanentStatus($status);
             }
         } catch (BlockedDestination $e) {
             $error = 'Blocked by SSRF guard: '.$e->getMessage();
+            $permanent = $e->permanent;
         } catch (Throwable $e) {
             $error = $this->truncate(class_basename($e).': '.$e->getMessage(), 1000);
         }
@@ -137,6 +140,23 @@ class Deliverer
             return;
         }
 
+        // A permanent client error (4xx other than 408/429) or a blocked target won't succeed
+        // on retry: mark the delivery `failed` straight away. A 4xx also proves the destination
+        // is up, so it closes the circuit rather than counting towards opening it.
+        if ($permanent) {
+            if ($status !== null) {
+                $this->breaker->recordSuccess($destination->id);
+            }
+            $this->transition($delivery, [
+                'status' => DeliveryStatus::Failed,
+                'attempt_count' => $attemptNumber,
+                'next_attempt_at' => null,
+                'last_error' => $error,
+            ]);
+
+            return;
+        }
+
         $this->breaker->recordFailure($destination->id);
 
         if ($attemptNumber >= $destination->max_attempts) {
@@ -156,6 +176,12 @@ class Deliverer
             'next_attempt_at' => Carbon::now()->addSeconds($this->backoff->delay($attemptNumber)),
             'last_error' => $error,
         ]);
+    }
+
+    /** 4xx means "this request will never work" except 408 Request Timeout and 429 Too Many Requests. */
+    public static function isPermanentStatus(int $status): bool
+    {
+        return $status >= 400 && $status < 500 && ! in_array($status, [408, 429], true);
     }
 
     /** Update only if we still own the delivery (status = delivering). */

@@ -41,12 +41,13 @@ it('re-checks at delivery time: a host that now resolves internally is blocked w
     app(Deliverer::class)->deliver($delivery->id);
 
     Http::assertNothingSent();
+    // A blocked target is a permanent error: `failed`, no retries.
     expect(Attempt::sole()->error)->toContain('Blocked by SSRF guard')->toContain('169.254.169.254')
-        ->and($delivery->refresh()->status)->toBe(DeliveryStatus::Pending)
+        ->and($delivery->refresh()->status)->toBe(DeliveryStatus::Failed)
         ->and($delivery->attempt_count)->toBe(1);
 });
 
-it('does not follow redirects, so a 302 to a metadata address is just a failed attempt', function () {
+it('does not follow redirects, so a 302 to a metadata address is just an unsuccessful attempt', function () {
     Http::fake(['*' => Http::response('', 302, ['Location' => 'http://169.254.169.254/latest/meta-data/'])]);
     [$source] = sourceWithDestinations();
     $this->call('POST', "/in/{$source->slug}", [], [], [], ['CONTENT_TYPE' => 'application/json'], '{"a":1}');

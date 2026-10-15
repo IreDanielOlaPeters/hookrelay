@@ -88,7 +88,7 @@ class UrlGuard
 
         $ips = $this->resolver->resolve($host);
         if ($ips === []) {
-            throw new BlockedDestination("Could not resolve host {$host}.");
+            throw new BlockedDestination("Could not resolve host {$host}.", permanent: false);
         }
         // Every address must be safe, otherwise a round-robin answer could still reach a blocked one.
         foreach ($ips as $ip) {
