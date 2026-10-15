@@ -13,6 +13,9 @@ Schedule::command('relay:demo-reset')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Proves the scheduler is alive; checked by the cron container's healthcheck.
+Schedule::command('relay:heartbeat cron')->everyMinute();
+
 Schedule::command('relay:prune')
     ->dailyAt('02:30')
     ->withoutOverlapping()

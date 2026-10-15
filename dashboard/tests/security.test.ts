@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { buildCsp, isHttps, isPublicPath, safeNext, securityHeaders } from '@/lib/security';
 
 describe('isPublicPath', () => {
-  it('only lets the login page through without a session', () => {
+  it('only lets the login page and the health check through without a session', () => {
     expect(isPublicPath('/login')).toBe(true);
+    expect(isPublicPath('/healthz')).toBe(true);
     expect(isPublicPath('/')).toBe(false);
     expect(isPublicPath('/events')).toBe(false);
     expect(isPublicPath('/loginx')).toBe(false);

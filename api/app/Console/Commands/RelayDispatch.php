@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Delivery\Dispatcher;
+use App\Services\Observability\Heartbeat;
 use Illuminate\Console\Command;
 
 class RelayDispatch extends Command
@@ -40,6 +41,7 @@ class RelayDispatch extends Command
 
         $lastRecovery = time();
         while (! $this->stopping) {
+            Heartbeat::beat('dispatcher');
             $count = $dispatcher->dispatchDue($limit);
             if ($count > 0) {
                 $this->line(now()->toDateTimeString()." dispatched {$count}");

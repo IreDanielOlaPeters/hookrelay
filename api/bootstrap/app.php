@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // Ingestion is deliberately outside the `api` and `web` groups:
             // no sessions, no CSRF, no auth, minimal middleware. It has to stay fast.
             Route::middleware([])->group(base_path('routes/ingest.php'));
+            Route::middleware([])->group(base_path('routes/ops.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware) {

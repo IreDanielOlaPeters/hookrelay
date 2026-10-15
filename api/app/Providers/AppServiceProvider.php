@@ -5,10 +5,12 @@ namespace App\Providers;
 use App\Services\Delivery\Backoff;
 use App\Services\Delivery\CircuitBreaker;
 use App\Services\Ingest\SignatureVerifier;
+use App\Services\Observability\Heartbeat;
 use App\Services\Security\DnsResolver;
 use App\Services\Security\UrlGuard;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -39,6 +41,9 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Queue workers beat on every loop (throttled), for the worker container healthcheck.
+        Queue::looping(fn () => Heartbeat::beat('worker'));
+
         // Brute-force protection for dashboard logins: per email and per client IP.
         RateLimiter::for('login', fn (Request $request) => [
             Limit::perMinute(10)->by('login-email:'.strtolower((string) $request->input('email'))),

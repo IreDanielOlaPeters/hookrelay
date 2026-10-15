@@ -5,7 +5,7 @@
 
 export const SESSION_COOKIE = 'hr_session';
 
-const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PATHS = ['/login', '/healthz'];
 
 /** Paths reachable without a session. Static assets are excluded by the proxy matcher. */
 export function isPublicPath(pathname: string): boolean {

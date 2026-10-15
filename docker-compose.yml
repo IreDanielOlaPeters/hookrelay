@@ -9,6 +9,8 @@ x-api-env: &api-env
   APP_KEY: ${APP_KEY:-base64:Hr3B76dIUXyBys2e3c2r1nGACL3Fjlhu1DtO0l/nENk=}
   APP_URL: ${APP_URL:-http://localhost:8080}
   LOG_CHANNEL: stderr
+  # One JSON object per line; event_id / delivery_id appear under "extra".
+  LOG_STDERR_FORMATTER: Monolog\Formatter\JsonFormatter
   LOG_LEVEL: ${LOG_LEVEL:-info}
   DB_CONNECTION: pgsql
   DB_HOST: postgres
@@ -31,6 +33,18 @@ x-api-env: &api-env
   RELAY_SSRF_ALLOWLIST: ${RELAY_SSRF_ALLOWLIST:-mock-receiver}
   RELAY_MAX_BODY_BYTES: ${RELAY_MAX_BODY_BYTES:-2097152}
   RELAY_INGEST_DEFAULT_RPS: ${RELAY_INGEST_DEFAULT_RPS:-}
+  # Alerts when a delivery goes dead or a circuit breaker opens (Slack and/or email; rate limited).
+  RELAY_ALERT_SLACK_WEBHOOK_URL: ${RELAY_ALERT_SLACK_WEBHOOK_URL:-}
+  RELAY_ALERT_EMAIL: ${RELAY_ALERT_EMAIL:-}
+  RELAY_ALERT_COOLDOWN_SECONDS: ${RELAY_ALERT_COOLDOWN_SECONDS:-900}
+  RELAY_DASHBOARD_URL: ${RELAY_DASHBOARD_URL:-http://localhost:3000}
+  MAIL_MAILER: ${MAIL_MAILER:-log}
+  MAIL_HOST: ${MAIL_HOST:-}
+  MAIL_PORT: ${MAIL_PORT:-587}
+  MAIL_USERNAME: ${MAIL_USERNAME:-}
+  MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-hookrelay@localhost}
+  RELAY_METRICS_TOKEN: ${RELAY_METRICS_TOKEN:-}
   RELAY_BACKOFF_BASE_SECONDS: ${RELAY_BACKOFF_BASE_SECONDS:-30}
   RELAY_BACKOFF_FACTOR: ${RELAY_BACKOFF_FACTOR:-4}
   RELAY_BACKOFF_CAP_SECONDS: ${RELAY_BACKOFF_CAP_SECONDS:-21600}
@@ -81,7 +95,8 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/up"]
+      # /ready: Postgres + Redis reachable and schema migrated (/health is plain liveness).
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/ready"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -93,8 +108,13 @@ services:
     command: ["php", "artisan", "queue:work", "redis", "--queue=deliveries,default", "--sleep=1", "--tries=0", "--timeout=90", "--max-time=3600"]
     depends_on:
       api: { condition: service_healthy }
+    # No HTTP server: Postgres + Redis reachable and this worker's loop heartbeat is fresh.
     healthcheck:
-      disable: true  # no HTTP server here; the base image's check would always fail
+      test: ["CMD", "php", "artisan", "relay:health", "--role=worker"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     deploy:
       replicas: ${WORKER_REPLICAS:-2}
 
@@ -103,7 +123,11 @@ services:
     environment: *api-env
     command: ["php", "artisan", "relay:dispatch"]
     healthcheck:
-      disable: true
+      test: ["CMD", "php", "artisan", "relay:health", "--role=dispatcher"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     depends_on:
       api: { condition: service_healthy }
 
@@ -112,7 +136,12 @@ services:
     environment: *api-env
     command: ["php", "artisan", "schedule:work"]
     healthcheck:
-      disable: true
+      # relay:heartbeat cron is scheduled every minute.
+      test: ["CMD", "php", "artisan", "relay:health", "--role=cron"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     depends_on:
       api: { condition: service_healthy }
 
@@ -125,6 +154,12 @@ services:
       API_URL: http://api:8080
     ports:
       - "${DASHBOARD_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       api: { condition: service_healthy }
 
@@ -137,6 +172,11 @@ services:
       PORT: 4000
     ports:
       - "${MOCK_RECEIVER_PORT:-4000}:4000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:
