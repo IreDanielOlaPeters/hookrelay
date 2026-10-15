@@ -5,6 +5,20 @@ return [
     // TODO(auth): replace with per-user tokens / SSO when auth grows beyond a single admin.
     'admin_token' => env('ADMIN_TOKEN'),
 
+    // Dashboard session lifetime (minutes) after login.
+    'session_minutes' => (int) env('RELAY_SESSION_MINUTES', 720),
+
+    // Public demo mode: a restricted demo user (credentials below, shown on the login page),
+    // a "data resets nightly" banner and a scheduled nightly reset. Turn OFF for real installs.
+    'demo' => [
+        'enabled' => filter_var(env('DEMO_MODE', false), FILTER_VALIDATE_BOOL),
+        'email' => 'demo@hookrelay.local',
+        'password' => 'hookrelay-demo',
+        // Demo users may only create destinations on these hosts.
+        'allowed_destination_hosts' => array_filter(array_map('trim', explode(',', (string) env('DEMO_DESTINATION_HOSTS', 'mock-receiver')))),
+        'reset_at' => env('DEMO_RESET_AT', '03:00'),
+    ],
+
     // Secret used to sign outbound deliveries (X-HookRelay-Signature).
     'outbound_secret' => env('RELAY_OUTBOUND_SECRET'),
 

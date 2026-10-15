@@ -22,17 +22,27 @@ class Ingestor
     /**
      * @throws InvalidSignature
      */
-    public function ingest(Source $source, HeaderBag $headers, string $body, ?string $contentType): IngestResult
-    {
+    /**
+     * @param  bool  $trusted  skip signature verification (test webhooks sent by an authenticated user)
+     * @param  string|null  $idempotencyKey  override the derived key
+     */
+    public function ingest(
+        Source $source,
+        HeaderBag $headers,
+        string $body,
+        ?string $contentType,
+        bool $trusted = false,
+        ?string $idempotencyKey = null,
+    ): IngestResult {
         $verified = false;
-        if ($source->signing_secret) {
+        if ($source->signing_secret && ! $trusted) {
             if (! $this->verifier->verify($source->provider, $headers, $body, $source->signing_secret)) {
                 throw new InvalidSignature;
             }
             $verified = true;
         }
 
-        $key = IdempotencyKey::for($source->provider, $headers, $body);
+        $key = $idempotencyKey ?? IdempotencyKey::for($source->provider, $headers, $body);
         // Postgres `text` rejects invalid UTF-8 and NUL bytes; keep such bodies byte-exact as base64.
         [$storedBody, $encoding] = mb_check_encoding($body, 'UTF-8') && ! str_contains($body, "\0")
             ? [$body, WebhookEvent::ENCODING_UTF8]

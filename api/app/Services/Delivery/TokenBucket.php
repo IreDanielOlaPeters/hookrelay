@@ -39,6 +39,11 @@ redis.call('PEXPIRE', key, math.ceil(capacity / rate * 1000) + 1000)
 return allowed
 LUA;
 
+    public function reset(string $destinationId): void
+    {
+        Redis::connection()->del("relay:ratelimit:{$destinationId}");
+    }
+
     public function take(string $destinationId, int $rps, ?int $nowMs = null): bool
     {
         if ($rps <= 0) {

@@ -21,4 +21,18 @@ class StoreDestinationRequest extends FormRequest
             'enabled' => ['sometimes', 'boolean'],
         ];
     }
+
+    public function after(): array
+    {
+        return [function ($validator) {
+            if (! $this->user()?->isDemo() || ! $this->filled('url')) {
+                return;
+            }
+            $allowed = config('relay.demo.allowed_destination_hosts', []);
+            $host = strtolower((string) parse_url((string) $this->input('url'), PHP_URL_HOST));
+            if (! in_array($host, $allowed, true)) {
+                $validator->errors()->add('url', 'In demo mode, destinations must point at the mock receiver ('.implode(', ', $allowed).'), e.g. http://mock-receiver:4000/ok.');
+            }
+        }];
+    }
 }

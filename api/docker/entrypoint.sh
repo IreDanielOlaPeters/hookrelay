@@ -1,11 +1,8 @@
 #!/bin/sh
 set -e
 
-# Refuse to run production with the development defaults baked into docker-compose.yml.
-if [ "$APP_ENV" = "production" ] && { [ "$ADMIN_TOKEN" = "dev-admin-token" ] || [ "$APP_KEY" = "base64:Hr3B76dIUXyBys2e3c2r1nGACL3Fjlhu1DtO0l/nENk=" ]; }; then
-  echo "Refusing to start: ADMIN_TOKEN/APP_KEY still use development defaults." >&2
-  exit 1
-fi
+# Refuse to run production with development-default secrets (APP_KEY, ADMIN_TOKEN, RELAY_OUTBOUND_SECRET).
+php artisan relay:preflight
 
 # Wait for Postgres.
 if [ -n "$DB_HOST" ]; then
@@ -18,6 +15,8 @@ fi
 
 if [ "$RUN_MIGRATIONS" = "true" ]; then
   php artisan migrate --force --no-interaction
+  # Idempotent: demo user + demo data when DEMO_MODE=true, removes the demo user otherwise.
+  php artisan relay:bootstrap --no-interaction
 fi
 
 exec "$@"

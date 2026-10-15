@@ -3,6 +3,8 @@
 use App\Models\Connection;
 use App\Models\Destination;
 use App\Models\Source;
+use App\Models\User;
+use App\Models\UserSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
@@ -35,4 +37,21 @@ function sourceWithDestinations(array $sourceAttributes = [], int $destinations 
 function adminHeaders(): array
 {
     return ['Authorization' => 'Bearer test-admin-token', 'Accept' => 'application/json'];
+}
+
+function adminUser(string $email = 'admin@example.test', string $password = 'correct-horse-battery'): User
+{
+    $user = new User(['name' => 'Admin', 'email' => $email, 'password' => $password]);
+    $user->role = User::ROLE_ADMIN;
+    $user->save();
+
+    return $user;
+}
+
+/** Bearer headers for a fresh dashboard session of the given user. */
+function sessionHeaders(User $user): array
+{
+    [, $token] = UserSession::start($user);
+
+    return ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
 }

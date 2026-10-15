@@ -5,6 +5,9 @@ namespace App\Providers;
 use App\Services\Delivery\Backoff;
 use App\Services\Delivery\CircuitBreaker;
 use App\Services\Ingest\SignatureVerifier;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -29,6 +32,10 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        // Brute-force protection for dashboard logins: per email and per client IP.
+        RateLimiter::for('login', fn (Request $request) => [
+            Limit::perMinute(10)->by('login-email:'.strtolower((string) $request->input('email'))),
+            Limit::perMinute(30)->by('login-ip:'.$request->ip()),
+        ]);
     }
 }

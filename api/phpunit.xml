@@ -44,6 +44,8 @@
         <server name="REDIS_PREFIX" value="hookrelay_test_" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <server name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="DEMO_MODE" value="false" force="true"/>
+        <server name="DEMO_MODE" value="false" force="true"/>
         <env name="ADMIN_TOKEN" value="test-admin-token" force="true"/>
         <server name="ADMIN_TOKEN" value="test-admin-token" force="true"/>
         <env name="RELAY_OUTBOUND_SECRET" value="test-outbound-secret" force="true"/>

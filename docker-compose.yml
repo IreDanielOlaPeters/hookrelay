@@ -23,6 +23,9 @@ x-api-env: &api-env
   CACHE_STORE: redis
   SESSION_DRIVER: array
   ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
+  # Public demo: restricted demo user (demo@hookrelay.local / hookrelay-demo), banner, nightly reset.
+  # Set DEMO_MODE=false for a real install: the demo user is then removed on boot.
+  DEMO_MODE: ${DEMO_MODE:-true}
   RELAY_OUTBOUND_SECRET: ${RELAY_OUTBOUND_SECRET:-dev-outbound-secret}
   RELAY_BACKOFF_BASE_SECONDS: ${RELAY_BACKOFF_BASE_SECONDS:-30}
   RELAY_BACKOFF_FACTOR: ${RELAY_BACKOFF_FACTOR:-4}
@@ -100,6 +103,15 @@ services:
     depends_on:
       api: { condition: service_healthy }
 
+  cron:
+    <<: *api-image
+    environment: *api-env
+    command: ["php", "artisan", "schedule:work"]
+    healthcheck:
+      disable: true
+    depends_on:
+      api: { condition: service_healthy }
+
   dashboard:
     build:
       context: ./dashboard
@@ -107,7 +119,6 @@ services:
     restart: unless-stopped
     environment:
       API_URL: http://api:8080
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin-token}
     ports:
       - "${DASHBOARD_PORT:-3000}:3000"
     depends_on:

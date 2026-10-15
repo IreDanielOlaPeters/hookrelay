@@ -1,6 +1,8 @@
 <?php
 
-use App\Http\Middleware\AdminToken;
+use App\Http\Middleware\AuthenticateRelay;
+use App\Http\Middleware\RequireAdmin;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,7 +20,8 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->alias(['admin' => AdminToken::class]);
+        $middleware->alias(['relay.auth' => AuthenticateRelay::class, 'relay.admin' => RequireAdmin::class]);
+        $middleware->append(SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*', 'in/*'));
