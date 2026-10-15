@@ -5,6 +5,8 @@ namespace App\Services\Delivery;
 use App\Enums\DeliveryStatus;
 use App\Models\Attempt;
 use App\Models\Delivery;
+use App\Services\Security\BlockedDestination;
+use App\Services\Security\UrlGuard;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -18,6 +20,7 @@ class Deliverer
         private readonly Backoff $backoff,
         private readonly CircuitBreaker $breaker,
         private readonly TokenBucket $bucket,
+        private readonly UrlGuard $guard,
     ) {}
 
     /**
@@ -84,11 +87,18 @@ class Deliverer
         $error = null;
 
         try {
+            // SSRF guard at delivery time, then pin the connection to the IP we just checked so a
+            // second DNS answer (rebinding) can't send the request somewhere else.
+            $pinnedIp = $this->guard->resolveForDelivery($destination->url);
+
             $response = Http::withHeaders($headers)
                 ->withOptions([
                     'timeout' => $destination->timeout_ms / 1000,
                     'connect_timeout' => min(5, $destination->timeout_ms / 1000),
+                    // Never follow redirects: a 3xx counts as a failure, so a redirect can't
+                    // lead to a blocked host either.
                     'allow_redirects' => false,
+                    'curl' => $pinnedIp ? [CURLOPT_RESOLVE => [UrlGuard::curlResolveEntry($destination->url, $pinnedIp)]] : [],
                 ])
                 ->withBody($body, $headers['Content-Type'])
                 ->post($destination->url);
@@ -98,6 +108,8 @@ class Deliverer
             if (! $response->successful()) {
                 $error = "HTTP {$status}";
             }
+        } catch (BlockedDestination $e) {
+            $error = 'Blocked by SSRF guard: '.$e->getMessage();
         } catch (Throwable $e) {
             $error = $this->truncate(class_basename($e).': '.$e->getMessage(), 1000);
         }

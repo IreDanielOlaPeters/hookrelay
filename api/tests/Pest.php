@@ -5,13 +5,19 @@ use App\Models\Destination;
 use App\Models\Source;
 use App\Models\User;
 use App\Models\UserSession;
+use App\Services\Security\DnsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
+use Tests\Support\FakeDnsResolver;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
-    ->beforeEach(fn () => Redis::connection()->flushdb())
+    ->beforeEach(function () {
+        Redis::connection()->flushdb();
+        // No real DNS in tests: every host resolves to a public address unless a test says otherwise.
+        app()->instance(DnsResolver::class, new FakeDnsResolver);
+    })
     ->in('Feature');
 
 /** A source connected to the given destinations (or one fresh destination). */
@@ -54,4 +60,13 @@ function sessionHeaders(User $user): array
     [, $token] = UserSession::start($user);
 
     return ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+}
+
+/** Make the given hosts resolve to the given IPs for the rest of the test. */
+function fakeDns(array $records, ?string $default = '93.184.216.34'): FakeDnsResolver
+{
+    $resolver = new FakeDnsResolver($records, $default);
+    app()->instance(DnsResolver::class, $resolver);
+
+    return $resolver;
 }

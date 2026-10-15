@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Services\Delivery\Backoff;
 use App\Services\Delivery\CircuitBreaker;
 use App\Services\Ingest\SignatureVerifier;
+use App\Services\Security\DnsResolver;
+use App\Services\Security\UrlGuard;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -22,6 +24,11 @@ class AppServiceProvider extends ServiceProvider
             baseSeconds: config('relay.backoff.base_seconds'),
             factor: config('relay.backoff.factor'),
             capSeconds: config('relay.backoff.cap_seconds'),
+        ));
+
+        $this->app->bind(UrlGuard::class, fn ($app) => new UrlGuard(
+            $app->make(DnsResolver::class),
+            config('relay.ssrf_allowlist', []),
         ));
 
         $this->app->singleton(CircuitBreaker::class, fn () => new CircuitBreaker(

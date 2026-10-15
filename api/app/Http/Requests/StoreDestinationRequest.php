@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Services\Security\BlockedDestination;
+use App\Services\Security\UrlGuard;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreDestinationRequest extends FormRequest
@@ -12,7 +14,6 @@ class StoreDestinationRequest extends FormRequest
 
         return [
             'name' => [$required, 'string', 'max:255'],
-            // TODO(security): block private/link-local targets (SSRF) once the relay is multi-tenant.
             'url' => [$required, 'string', 'max:2048', 'url:http,https'],
             'auth_header' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'timeout_ms' => ['sometimes', 'integer', 'min:100', 'max:60000'],
@@ -25,7 +26,17 @@ class StoreDestinationRequest extends FormRequest
     public function after(): array
     {
         return [function ($validator) {
-            if (! $this->user()?->isDemo() || ! $this->filled('url')) {
+            if (! $this->filled('url') || $validator->errors()->has('url')) {
+                return;
+            }
+            try {
+                app(UrlGuard::class)->assertAllowed((string) $this->input('url'));
+            } catch (BlockedDestination $e) {
+                $validator->errors()->add('url', $e->getMessage());
+
+                return;
+            }
+            if (! $this->user()?->isDemo()) {
                 return;
             }
             $allowed = config('relay.demo.allowed_destination_hosts', []);
