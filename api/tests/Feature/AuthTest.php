@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use App\Models\UserSession;
+use App\Support\DemoFixtures;
 use Illuminate\Support\Carbon;
 
 it('logs in with valid credentials and returns a session token that authenticates', function () {
@@ -38,6 +39,23 @@ it('throttles repeated login attempts', function () {
     }
 
     $this->postJson('/api/auth/login', ['email' => 'admin@example.test', 'password' => 'correct-horse-battery'])->assertStatus(429);
+});
+
+it('does not throttle the public demo account per email, so many visitors can sign in', function () {
+    config(['relay.demo.enabled' => true]);
+    DemoFixtures::ensureDemoUser();
+
+    foreach (range(1, 15) as $_) {
+        $this->postJson('/api/auth/login', ['email' => 'demo@hookrelay.local', 'password' => 'hookrelay-demo'])->assertOk();
+    }
+});
+
+it('caps login attempts per client IP across emails', function () {
+    foreach (range(1, 120) as $i) {
+        $this->postJson('/api/auth/login', ['email' => "user{$i}@example.test", 'password' => 'x'])->assertStatus(422);
+    }
+
+    $this->postJson('/api/auth/login', ['email' => 'another@example.test', 'password' => 'x'])->assertStatus(429);
 });
 
 it('logs out by deleting the session', function () {

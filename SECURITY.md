@@ -29,7 +29,7 @@ The Compose file ships **development defaults** so a fresh clone works with one 
 |---|---|
 | Dashboard auth | Email and password login. Server-side sessions: only a SHA-256 of the 64-character token is stored, and it expires after `RELAY_SESSION_MINUTES`. The token lives in an `httpOnly`, `SameSite=Lax` cookie. Every page and server action requires a session, and the API re-validates it on each call. |
 | Roles | `admin` has full access. `demo` (only in `DEMO_MODE`) can browse, send test webhooks and replay, and can't delete or change settings. The API enforces this, not just the UI. |
-| Brute force | Login is throttled per email (10 a minute) and per IP (30 a minute). Unknown emails and wrong passwords get the same response and similar timing. |
+| Brute force | Login is throttled per email (10 a minute) and per IP (120 a minute). Unknown emails and wrong passwords get the same response and similar timing. The public demo account is exempt from the per-email limit: its password is published, and every demo visitor shares it. |
 | API tokens | `ADMIN_TOKEN` is compared with `hash_equals`. The dashboard doesn't hold it. |
 | Webhook signatures | Stripe, GitHub, Shopify, WooCommerce and generic HMAC, using constant-time comparison and Stripe's 5-minute timestamp tolerance. Outbound requests are signed with `X-HookRelay-Signature`. |
 | Secrets at rest | Source signing secrets and destination auth headers are encrypted with `APP_KEY`. They're never returned by the API, and forms never echo them back. |

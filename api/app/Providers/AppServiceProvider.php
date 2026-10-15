@@ -44,10 +44,17 @@ class AppServiceProvider extends ServiceProvider
         // Queue workers beat on every loop (throttled), for the worker container healthcheck.
         Queue::looping(fn () => Heartbeat::beat('worker'));
 
-        // Brute-force protection for dashboard logins: per email and per client IP.
-        RateLimiter::for('login', fn (Request $request) => [
-            Limit::perMinute(10)->by('login-email:'.strtolower((string) $request->input('email'))),
-            Limit::perMinute(30)->by('login-ip:'.$request->ip()),
-        ]);
+        // Brute-force protection for dashboard logins. Per email: 10/min, except the demo account,
+        // whose password is published and which every demo visitor shares. Per IP: dashboard logins
+        // all arrive from the dashboard container, so this is a generous global ceiling.
+        RateLimiter::for('login', function (Request $request) {
+            $email = strtolower(trim((string) $request->input('email')));
+            $limits = [Limit::perMinute(120)->by('login-ip:'.$request->ip())];
+            if (! (config('relay.demo.enabled') && $email === config('relay.demo.email'))) {
+                $limits[] = Limit::perMinute(10)->by('login-email:'.$email);
+            }
+
+            return $limits;
+        });
     }
 }

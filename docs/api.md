@@ -24,7 +24,7 @@ Validation errors return `422 {"message": "...", "errors": {"field": ["..."]}}`.
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/auth/login` | `{email, password}` → `{token, expires_at, user:{id,name,email,role}}`. `422` for bad credentials (the same message whether the email or the password is wrong). `429` after 10 attempts a minute per email. Public. |
+| POST | `/api/auth/login` | `{email, password}` → `{token, expires_at, user:{id,name,email,role}}`. `422` for bad credentials (the same message whether the email or the password is wrong). `429` after 10 attempts a minute per email (the public demo account is exempt) or 120 a minute per client IP. Public. |
 | GET | `/api/auth/demo` | `{demo_mode:false}`, or `{demo_mode:true, email, password}` with the public demo credentials. Public. |
 | GET | `/api/auth/me` | `{user, demo_mode}` |
 | POST | `/api/auth/logout` | Ends the session → `204` |
