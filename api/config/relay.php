@@ -61,6 +61,18 @@ return [
         'default_rps' => env('RELAY_INGEST_DEFAULT_RPS') !== null && env('RELAY_INGEST_DEFAULT_RPS') !== '' ? (int) env('RELAY_INGEST_DEFAULT_RPS') : null,
     ],
 
+    // Alerts when a delivery goes dead or a circuit breaker opens. Configure Slack and/or email;
+    // each destination alerts at most once per cooldown window per kind.
+    'alerts' => [
+        'slack_webhook_url' => env('RELAY_ALERT_SLACK_WEBHOOK_URL'),
+        'email' => env('RELAY_ALERT_EMAIL'),
+        'cooldown_seconds' => (int) env('RELAY_ALERT_COOLDOWN_SECONDS', 900),
+        'dashboard_url' => env('RELAY_DASHBOARD_URL', 'http://localhost:3000'),
+    ],
+
+    // Optional bearer token for GET /metrics. Unset = open (restrict it at your proxy/network).
+    'metrics_token' => env('RELAY_METRICS_TOKEN'),
+
     // Max bytes of a destination response body kept per attempt.
     'response_body_limit' => 4096,
 ];

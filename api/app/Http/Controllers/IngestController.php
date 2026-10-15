@@ -6,8 +6,11 @@ use App\Models\Source;
 use App\Services\Delivery\TokenBucket;
 use App\Services\Ingest\Ingestor;
 use App\Services\Ingest\InvalidSignature;
+use App\Services\Observability\Metrics;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Facades\Log;
 
 /**
  * POST /in/{slug}: verify, dedupe, write to the outbox, answer. Nothing else.
@@ -15,7 +18,7 @@ use Illuminate\Http\Request;
  */
 class IngestController extends Controller
 {
-    public function __invoke(Request $request, string $slug, Ingestor $ingestor, TokenBucket $bucket): JsonResponse
+    public function __invoke(Request $request, string $slug, Ingestor $ingestor, TokenBucket $bucket, Metrics $metrics): JsonResponse
     {
         // Cheapest check first: refuse oversized bodies before touching the database.
         $maxBytes = (int) config('relay.ingest.max_body_bytes');
@@ -51,9 +54,14 @@ class IngestController extends Controller
             return response()->json(['message' => 'Invalid signature.'], 401);
         }
 
+        Context::add(['event_id' => $result->eventId, 'source' => $source->slug]);
         if ($result->duplicate) {
+            Log::info('webhook.duplicate');
+
             return response()->json(['event_id' => $result->eventId, 'duplicate' => true], 200);
         }
+        $metrics->eventReceived($source->slug);
+        Log::info('webhook.received', ['deliveries' => $result->deliveries, 'bytes' => strlen($body)]);
 
         return response()->json(['event_id' => $result->eventId, 'deliveries' => $result->deliveries], 202);
     }

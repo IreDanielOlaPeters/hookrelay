@@ -163,6 +163,48 @@ $expected = 'sha256='.hash_hmac('sha256', file_get_contents('php://input'), $out
 hash_equals($expected, $_SERVER['HTTP_X_HOOKRELAY_SIGNATURE']);
 ```
 
+## Operations
+
+### Health checks
+
+| Endpoint / check | Meaning |
+|---|---|
+| `GET /health` (API) | Liveness: the process answers. Has no dependencies, so a database blip doesn't restart the API. |
+| `GET /ready` (API) | Readiness: Postgres, the schema and Redis are all OK, otherwise `503` with per-check details. Used by the `api` healthcheck. |
+| `php artisan relay:health --role=worker\|dispatcher\|cron` | For processes without HTTP. Postgres and Redis must be reachable, and the process's loop **heartbeat** in Redis must be fresh, so a hung worker shows as unhealthy, not just a dead one. |
+| `GET /healthz` (dashboard), `GET /health` (mock receiver) | Liveness |
+
+Every Compose service has a healthcheck, and `docker compose ps` shows them all `healthy`.
+
+### Metrics
+
+`GET /metrics` serves the Prometheus text format. Set `RELAY_METRICS_TOKEN` to require `Authorization: Bearer …`; otherwise restrict it at your proxy or network.
+
+| Metric | Type | Labels |
+|---|---|---|
+| `hookrelay_events_received_total` | counter | `source` |
+| `hookrelay_deliveries` | gauge | `status` |
+| `hookrelay_outbox_due` | gauge | — (pending deliveries due, waiting for the dispatcher) |
+| `hookrelay_delivery_attempts_total` | counter | `outcome` = success, retry, failed, dead |
+| `hookrelay_attempt_duration_seconds` | histogram | buckets from 50 ms to 30 s |
+| `hookrelay_queue_depth` | gauge | `queue` (Redis: ready + delayed + reserved) |
+| `hookrelay_circuit_breaker_state` | gauge | `destination_id`, `destination` (0 closed, 1 open, 2 half-open) |
+| `hookrelay_alerts_total` | counter | `kind`, `result` = sent or suppressed |
+
+Counters and the histogram live in Redis, so every API and worker container adds to the same series. Gauges are read at scrape time.
+
+### Logs
+
+All PHP services log **one JSON object per line** to stderr (Monolog's `JsonFormatter`). Lines written while handling a webhook or delivery carry `event_id`, `delivery_id`, `destination_id` and `source` under `extra`, through Laravel's `Context`. Key messages are `webhook.received`, `webhook.duplicate`, `delivery.succeeded`, `delivery.retry_scheduled`, `delivery.failed`, `delivery.dead`, `circuit.opened` and `alert.*`.
+
+```bash
+docker compose logs worker --no-log-prefix | jq 'select(.extra.event_id == "<event uuid>")'
+```
+
+### Alerts
+
+When a delivery goes **dead** or a destination's **circuit breaker opens**, HookRelay posts to a Slack incoming webhook (`RELAY_ALERT_SLACK_WEBHOOK_URL`) and/or emails `RELAY_ALERT_EMAIL`, using Laravel's `MAIL_*` settings. Alerts are rate limited per destination and kind: one per `RELAY_ALERT_COOLDOWN_SECONDS`, default 15 minutes. An outage therefore produces one message, not one per webhook. Suppressed alerts are counted in `hookrelay_alerts_total`.
+
 ## Delivery guarantees and their limits
 
 **At-least-once delivery, plus dedupe at ingestion.**

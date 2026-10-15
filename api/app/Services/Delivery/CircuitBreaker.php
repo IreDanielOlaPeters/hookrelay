@@ -58,21 +58,31 @@ class CircuitBreaker
         );
     }
 
-    public function recordFailure(string $destinationId, ?int $now = null): void
+    /** @return bool true when this failure opened the circuit (closed -> open, or a failed probe) */
+    public function recordFailure(string $destinationId, ?int $now = null): bool
     {
         $now ??= time();
 
-        if ($this->openUntil($destinationId) !== null) {
-            // A failed half-open probe (or a straggler from before the circuit opened): re-open.
-            $this->open($destinationId, $now);
+        $openUntil = $this->openUntil($destinationId);
+        if ($openUntil !== null) {
+            // A failed half-open probe re-opens the circuit; a straggler from before it opened doesn't count.
+            if ($now >= $openUntil) {
+                $this->open($destinationId, $now);
 
-            return;
+                return true;
+            }
+
+            return false;
         }
 
         $failures = (int) $this->redis()->incr($this->key($destinationId, 'failures'));
-        if ($failures >= $this->failureThreshold) {
+        if ($failures === $this->failureThreshold) {
             $this->open($destinationId, $now);
+
+            return true;
         }
+
+        return false;
     }
 
     /** @return array{state: string, consecutive_failures: int, open_until: int|null} */

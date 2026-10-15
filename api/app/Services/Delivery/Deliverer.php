@@ -5,10 +5,14 @@ namespace App\Services\Delivery;
 use App\Enums\DeliveryStatus;
 use App\Models\Attempt;
 use App\Models\Delivery;
+use App\Services\Alerts\Alerter;
+use App\Services\Observability\Metrics;
 use App\Services\Security\BlockedDestination;
 use App\Services\Security\UrlGuard;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -21,6 +25,8 @@ class Deliverer
         private readonly CircuitBreaker $breaker,
         private readonly TokenBucket $bucket,
         private readonly UrlGuard $guard,
+        private readonly Metrics $metrics,
+        private readonly Alerter $alerter,
     ) {}
 
     /**
@@ -28,6 +34,17 @@ class Deliverer
      *                  (rate limited, no attempt counted), or null when the job is done.
      */
     public function deliver(string $deliveryId): ?int
+    {
+        // Every log line written while handling this delivery carries these ids.
+        Context::add('delivery_id', $deliveryId);
+        try {
+            return $this->handle($deliveryId);
+        } finally {
+            Context::forget(['delivery_id', 'event_id', 'destination_id']);
+        }
+    }
+
+    private function handle(string $deliveryId): ?int
     {
         $delivery = Delivery::with(['event', 'destination'])->find($deliveryId);
 
@@ -37,6 +54,7 @@ class Deliverer
         }
 
         $destination = $delivery->destination;
+        Context::add(['event_id' => $delivery->event_id, 'destination_id' => $destination->id]);
 
         if ($destination->rate_limit_rps && ! $this->bucket->take($destination->id, $destination->rate_limit_rps)) {
             // Touch so the stuck-delivery recovery does not reclaim it while it waits.
@@ -128,7 +146,12 @@ class Deliverer
             'error' => $error,
         ]);
 
+        $seconds = $durationMs / 1000;
+        $logContext = ['attempt' => $attemptNumber, 'status' => $status, 'duration_ms' => $durationMs, 'error' => $error];
+
         if ($error === null) {
+            $this->metrics->attempt('success', $seconds);
+            Log::info('delivery.succeeded', $logContext);
             $this->breaker->recordSuccess($destination->id);
             $this->transition($delivery, [
                 'status' => DeliveryStatus::Succeeded,
@@ -144,6 +167,8 @@ class Deliverer
         // on retry: mark the delivery `failed` straight away. A 4xx also proves the destination
         // is up, so it closes the circuit rather than counting towards opening it.
         if ($permanent) {
+            $this->metrics->attempt('failed', $seconds);
+            Log::warning('delivery.failed', $logContext + ['permanent' => true]);
             if ($status !== null) {
                 $this->breaker->recordSuccess($destination->id);
             }
@@ -157,9 +182,25 @@ class Deliverer
             return;
         }
 
-        $this->breaker->recordFailure($destination->id);
+        if ($this->breaker->recordFailure($destination->id)) {
+            Log::warning('circuit.opened', ['destination' => $destination->name]);
+            $this->alerter->notify('circuit_open', $destination->id, "Circuit breaker opened for {$destination->name}", [
+                'Destination' => "{$destination->name} ({$destination->url})",
+                'Last error' => $error,
+                'Paused for' => config('relay.circuit_breaker.open_seconds').' s',
+            ]);
+        }
 
         if ($attemptNumber >= $destination->max_attempts) {
+            $this->metrics->attempt('dead', $seconds);
+            Log::error('delivery.dead', $logContext);
+            $this->alerter->notify('delivery_dead', $destination->id, "Delivery to {$destination->name} is dead", [
+                'Destination' => "{$destination->name} ({$destination->url})",
+                'Event' => $event->id,
+                'Delivery' => $delivery->id,
+                'Attempts' => $attemptNumber,
+                'Last error' => $error,
+            ]);
             $this->transition($delivery, [
                 'status' => DeliveryStatus::Dead,
                 'attempt_count' => $attemptNumber,
@@ -170,10 +211,13 @@ class Deliverer
             return;
         }
 
+        $delay = $this->backoff->delay($attemptNumber);
+        $this->metrics->attempt('retry', $seconds);
+        Log::notice('delivery.retry_scheduled', $logContext + ['retry_in_s' => $delay]);
         $this->transition($delivery, [
             'status' => DeliveryStatus::Pending,
             'attempt_count' => $attemptNumber,
-            'next_attempt_at' => Carbon::now()->addSeconds($this->backoff->delay($attemptNumber)),
+            'next_attempt_at' => Carbon::now()->addSeconds($delay),
             'last_error' => $error,
         ]);
     }
