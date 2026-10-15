@@ -37,7 +37,7 @@ The first `docker compose up` builds the images, which takes a few minutes. Migr
 flowchart LR
     P["Providers<br/>Stripe · GitHub · Shopify · WooCommerce · generic"] -->|"POST /in/{slug}"| I
 
-    subgraph API["api (Laravel 11)"]
+    subgraph API["api (Laravel 12)"]
         I["Ingestion<br/>verify signature → idempotency key"]
         M["Management API<br/>/api/* (ADMIN_TOKEN)"]
     end
@@ -197,7 +197,7 @@ Set these in the root `.env`; Compose reads them. Defaults are in brackets.
 ## Development
 
 ```
-api/              Laravel 11 app (PHP 8.3)
+api/              Laravel 12 app (PHP 8.3)
   app/Services/Ingest/     SignatureVerifier, IdempotencyKey, Ingestor (outbox)
   app/Services/Delivery/   Dispatcher, Deliverer, Backoff, TokenBucket, CircuitBreaker, Replayer
   app/Jobs/DeliverWebhook  thin queue wrapper around Deliverer
@@ -207,18 +207,14 @@ mock-receiver/    zero-dependency Node test destination
 docs/api.md       management API contract
 ```
 
+The API runs on Laravel 12, and `composer audit` reports no security advisories, with no ignores configured.
+
 The tests run against real Postgres and Redis, because `SKIP LOCKED`, the Lua token bucket and the circuit breaker need real backends. They use the `hookrelay_test` database and Redis DB 14. `tests/TestCase.php` refuses to run against any database whose name doesn't end in `_test`.
 
 CI (`.github/workflows/ci.yml`) runs Pest against Postgres and Redis service containers, along with Pint, ESLint, `tsc` and `next build`. It also builds every Docker image.
 
 ### Known gaps / roadmap
 
-- **Laravel 11 security advisories.** Laravel 11 is past end of support, so Composer flags open advisories against every 11.x release. They are ignored in `api/composer.json` (`config.audit.ignore`). None of them affects code paths HookRelay uses:
-  - a debug-page XSS (needs `APP_DEBUG=true`)
-  - temporary signed URLs (not used)
-  - CRLF injection in the `email` validation rule (not used)
-
-  Upgrading to Laravel 12 is the first item on the roadmap.
 - **The dashboard has no login.** It holds the admin token server-side, so anyone who can reach port 3000 can manage the relay. Keep it on a private network or behind an authenticating proxy. *TODO(auth)*
 - **No SSRF protection on destination URLs.** That's fine for a single trusted admin, but it's required before multi-tenancy. *TODO(security)*
 - **No retention or pruning job** for old events and attempts yet. *TODO(retention)*
