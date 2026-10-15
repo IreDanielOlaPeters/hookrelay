@@ -44,7 +44,14 @@ LUA;
         Redis::connection()->del("relay:ratelimit:{$destinationId}");
     }
 
+    /** Per-destination delivery bucket. */
     public function take(string $destinationId, int $rps, ?int $nowMs = null): bool
+    {
+        return $this->takeFrom("relay:ratelimit:{$destinationId}", $rps, $nowMs);
+    }
+
+    /** Take one token from the named bucket (e.g. "relay:ingest:{sourceId}"). */
+    public function takeFrom(string $key, int $rps, ?int $nowMs = null): bool
     {
         if ($rps <= 0) {
             return true;
@@ -55,7 +62,7 @@ LUA;
         return (int) Redis::connection()->eval(
             self::SCRIPT,
             1,
-            "relay:ratelimit:{$destinationId}",
+            $key,
             $rps,
             max(1, $rps),
             $nowMs,

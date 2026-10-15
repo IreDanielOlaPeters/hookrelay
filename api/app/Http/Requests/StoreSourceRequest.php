@@ -19,6 +19,7 @@ class StoreSourceRequest extends FormRequest
             'provider' => ['sometimes', Rule::enum(Provider::class)],
             'signing_secret' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'dedupe_window_seconds' => ['sometimes', 'integer', 'min:0', 'max:31536000'],
+            'rate_limit_rps' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:100000'],
         ];
     }
 }

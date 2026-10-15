@@ -85,6 +85,7 @@ export async function createSourceAction(_prev: FormState, fd: FormData): Promis
     provider: PROVIDERS.includes(provider as Provider) ? (provider as Provider) : undefined,
     signing_secret: str(fd, 'signing_secret'),
     dedupe_window_seconds: int(fd, 'dedupe_window_seconds'),
+    rate_limit_rps: int(fd, 'rate_limit_rps'),
   };
   return keepValues(fd, await run(() => api.createSource(input), `Source “${input.name}” created.`));
 }

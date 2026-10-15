@@ -34,6 +34,7 @@ export interface Source {
   provider: Provider;
   has_signing_secret: boolean;
   dedupe_window_seconds: number;
+  rate_limit_rps: number | null;
   ingest_url: string;
   created_at: string;
   updated_at: string;
@@ -144,6 +145,7 @@ export interface SourceInput {
   provider?: Provider;
   signing_secret?: string | null;
   dedupe_window_seconds?: number;
+  rate_limit_rps?: number;
 }
 
 export interface DestinationInput {

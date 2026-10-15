@@ -47,6 +47,17 @@ return [
 
     'stripe_tolerance_seconds' => 300,
 
+    // SSRF guard: destinations may not resolve to private/loopback/link-local/metadata/ULA
+    // addresses unless listed here (hostnames, *.suffix wildcards, IPs or CIDR ranges).
+    'ssrf_allowlist' => array_values(array_filter(array_map('trim', explode(',', (string) env('RELAY_SSRF_ALLOWLIST', ''))))),
+
+    'ingest' => [
+        // Bodies larger than this get 413. Keep below PHP's post_max_size (10M in the image).
+        'max_body_bytes' => (int) env('RELAY_MAX_BODY_BYTES', 2 * 1024 * 1024),
+        // Per-source requests/second when the source has no rate_limit_rps of its own. Empty = unlimited.
+        'default_rps' => env('RELAY_INGEST_DEFAULT_RPS') !== null && env('RELAY_INGEST_DEFAULT_RPS') !== '' ? (int) env('RELAY_INGEST_DEFAULT_RPS') : null,
+    ],
+
     // Max bytes of a destination response body kept per attempt.
     'response_body_limit' => 4096,
 ];

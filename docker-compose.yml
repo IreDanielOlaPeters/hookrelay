@@ -27,6 +27,10 @@ x-api-env: &api-env
   # Set DEMO_MODE=false for a real install: the demo user is then removed on boot.
   DEMO_MODE: ${DEMO_MODE:-true}
   RELAY_OUTBOUND_SECRET: ${RELAY_OUTBOUND_SECRET:-dev-outbound-secret}
+  # SSRF guard allowlist (hostnames, *.suffix, IPs, CIDRs). mock-receiver is internal, so it must be listed.
+  RELAY_SSRF_ALLOWLIST: ${RELAY_SSRF_ALLOWLIST:-mock-receiver}
+  RELAY_MAX_BODY_BYTES: ${RELAY_MAX_BODY_BYTES:-2097152}
+  RELAY_INGEST_DEFAULT_RPS: ${RELAY_INGEST_DEFAULT_RPS:-}
   RELAY_BACKOFF_BASE_SECONDS: ${RELAY_BACKOFF_BASE_SECONDS:-30}
   RELAY_BACKOFF_FACTOR: ${RELAY_BACKOFF_FACTOR:-4}
   RELAY_BACKOFF_CAP_SECONDS: ${RELAY_BACKOFF_CAP_SECONDS:-21600}

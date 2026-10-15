@@ -123,6 +123,11 @@ Delivery statuses: `pending` → `delivering` → `succeeded` | `pending` (retry
 
 Signature checks only run when the source has a `signing_secret`. All comparisons use `hash_equals`. When there's no provider id, the key is `sha256(raw body)`. Keys are unique per source within `dedupe_window_seconds` (default 24 h). After the window, the same key is accepted again as a new event.
 
+### Safety limits
+
+- **SSRF guard.** Destination URLs may not point at private, loopback, link-local or cloud-metadata, CGNAT, multicast or IPv6 unique-local addresses, either directly or through DNS. The URL is checked when a destination is saved and again before every delivery. At delivery, every address the host resolves to must pass, and the request is then **pinned to the checked IP**, so a DNS-rebinding answer can't redirect it. Redirects are never followed. Internal targets need an explicit opt-in through `RELAY_SSRF_ALLOWLIST`: hostnames, `*.suffix` wildcards, IPs or CIDR ranges. Compose lists `mock-receiver` by default.
+- **Ingestion limits.** Each source can have its own `rate_limit_rps`, or falls back to `RELAY_INGEST_DEFAULT_RPS`. Excess requests get `429` with `Retry-After: 1`, checked before the signature so floods stay cheap. Bodies over `RELAY_MAX_BODY_BYTES` (default 2 MB) get `413`, decided from `Content-Length` before the body is read.
+
 ### Outbound requests
 
 Each delivery is a `POST` of the original body, sent with the original `Content-Type`, plus:
@@ -157,7 +162,7 @@ The limits:
 - **The rate limit is approximate.** Rate-limited jobs wait in the queue, and a burst can exceed `rate_limit_rps` for a moment while buckets refill.
 - **The circuit breaker is per destination, not per URL path or host.** While a circuit is open, deliveries are postponed, not failed, so a long outage uses calendar time, not attempts.
 - **Dedupe has edge cases.** The idempotency key is per source. For the body-hash fallback, two legitimately identical payloads within the dedupe window count as one event.
-- **Bodies are capped.** The API accepts bodies up to 10 MB (`post_max_size`), and everything lives in Postgres. *TODO(object-storage): spill large bodies to S3-compatible storage.*
+- **Bodies are capped.** The API accepts bodies up to `RELAY_MAX_BODY_BYTES` (default 2 MB; at most 10 MB, PHP's `post_max_size`), and everything lives in Postgres. *TODO(object-storage): spill large bodies to S3-compatible storage.*
 
 ## Management API
 
@@ -207,6 +212,9 @@ Set these in the root `.env`; Compose reads them. Defaults are in brackets.
 | `DEMO_MODE` | Public demo: demo user, banner, nightly reset. **Set `false` for real installs.** [`true`] |
 | `DEMO_DESTINATION_HOSTS` | Hosts the demo user may create destinations on. [`mock-receiver`] |
 | `RELAY_SESSION_MINUTES` | Dashboard session lifetime. [720] |
+| `RELAY_SSRF_ALLOWLIST` | Internal destinations to allow (hostnames, `*.suffix`, IPs, CIDRs). [`mock-receiver`] |
+| `RELAY_MAX_BODY_BYTES` | Max webhook body; larger requests get `413`. [2097152] |
+| `RELAY_INGEST_DEFAULT_RPS` | Per-source ingestion rate limit when the source sets none; `429` beyond it. [unlimited] |
 | `RELAY_OUTBOUND_SECRET` | HMAC secret for `X-HookRelay-Signature`. |
 | `RELAY_BACKOFF_BASE_SECONDS` / `_FACTOR` / `_CAP_SECONDS` | Retry schedule. [30 / 4 / 21600] Set the base to `2` for quick demos of retries and dead letters. |
 | `RELAY_DISPATCH_BATCH`, `RELAY_DISPATCH_INTERVAL` | Dispatcher batch size and idle sleep. [100, 2 s] |
@@ -238,7 +246,6 @@ The dashboard lints with ESLint 9 using typescript-eslint, react, react-hooks an
 ### Known gaps / roadmap
 
 - **Auth is deliberately simple:** admin and demo roles, with no per-user permissions, password reset or SSO. *TODO(auth)*
-- **No SSRF protection on destination URLs.** That's fine for a single trusted admin, but it's required before multi-tenancy. *TODO(security)*
 - **No retention or pruning job** for old events and attempts yet. *TODO(retention)*
 - **Bulk replay runs synchronously,** in chunks. Very large replays should move to a queued job. *TODO(scale)*
 - Multi-tenancy, billing and a WordPress plugin are out of scope for Phase 1. *TODO(multi-tenancy)*

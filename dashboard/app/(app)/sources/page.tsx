@@ -54,12 +54,13 @@ export default async function SourcesPage() {
                 <th>Ingest URL</th>
                 <th>Signing secret</th>
                 <th>Dedupe window</th>
+                <th>Rate limit</th>
                 <th>Created</th>
                 <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sources.data.length === 0 && <EmptyRow colSpan={7}>No sources yet.</EmptyRow>}
+              {sources.data.length === 0 && <EmptyRow colSpan={8}>No sources yet.</EmptyRow>}
               {sources.data.map((s) => (
                 <tr key={s.id}>
                   <td>
@@ -76,6 +77,9 @@ export default async function SourcesPage() {
                     {s.has_signing_secret ? <Badge tone="green">set</Badge> : <Badge>none</Badge>}
                   </td>
                   <td className="tabular-nums">{formatSeconds(s.dedupe_window_seconds)}</td>
+                  <td className="tabular-nums">
+                    {s.rate_limit_rps ? `${s.rate_limit_rps}/s` : <span className="text-gray-400">default</span>}
+                  </td>
                   <td><Time iso={s.created_at} /></td>
                   <td className="text-right">
                     {manage && <ActionButton

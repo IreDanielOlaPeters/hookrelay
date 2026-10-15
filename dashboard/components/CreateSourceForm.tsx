@@ -7,7 +7,7 @@ import { SubmitButton } from './SubmitButton';
 import { useResetOnSuccess } from './useResetOnSuccess';
 
 const PROVIDERS = ['generic', 'stripe', 'github', 'shopify', 'woocommerce'];
-const FIELDS = ['name', 'slug', 'provider', 'signing_secret', 'dedupe_window_seconds'];
+const FIELDS = ['name', 'slug', 'provider', 'signing_secret', 'dedupe_window_seconds', 'rate_limit_rps'];
 
 export function CreateSourceForm() {
   const [state, action] = useActionState(createSourceAction, {});
@@ -57,7 +57,20 @@ export function CreateSourceForm() {
           />
           <FieldError state={state} name="dedupe_window_seconds" />
         </div>
-        <div className="sm:col-span-2">
+        <div>
+          <label className="label" htmlFor="src-rps">Ingest rate limit (req/s, optional)</label>
+          <input
+            id="src-rps"
+            name="rate_limit_rps"
+            defaultValue={state?.values?.rate_limit_rps}
+            type="number"
+            min={1}
+            className="input"
+            placeholder="unlimited"
+          />
+          <FieldError state={state} name="rate_limit_rps" />
+        </div>
+        <div>
           <label className="label" htmlFor="src-secret">Signing secret (optional)</label>
           <input
             id="src-secret"

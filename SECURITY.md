@@ -34,6 +34,8 @@ The Compose file ships **development defaults** so a fresh clone works with one 
 | Webhook signatures | Stripe, GitHub, Shopify, WooCommerce and generic HMAC, using constant-time comparison and Stripe's 5-minute timestamp tolerance. Outbound requests are signed with `X-HookRelay-Signature`. |
 | Secrets at rest | Source signing secrets and destination auth headers are encrypted with `APP_KEY`. They're never returned by the API, and forms never echo them back. |
 | Headers | Dashboard: a nonce-based CSP (`script-src 'self' 'nonce-…' 'strict-dynamic'`, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` and `Permissions-Policy`. API: `default-src 'none'` plus the same framing and `nosniff` headers. Both send HSTS only over HTTPS. |
+| SSRF | Destinations can't target private, loopback, link-local or cloud-metadata (`169.254.169.254`, `fd00:ec2::254`, `100.100.100.200`), CGNAT, multicast or IPv6 unique-local addresses. IPv4-mapped, NAT64 and 6to4 forms are covered too, as are names like `localhost`, `*.internal` and `metadata`. URLs are checked when saved and again at delivery, where every resolved address must pass and the connection is pinned to the checked IP (cURL `RESOLVE`) against DNS rebinding. Redirects are never followed. Self-hosters can opt internal targets in with `RELAY_SSRF_ALLOWLIST`. |
+| Ingestion limits | Per-source token-bucket rate limit (`429` with `Retry-After`), checked before signature verification. A configurable max body size (`413`) is checked on `Content-Length` before the body is read. |
 | Redirects | The login `?next=` parameter accepts only same-site relative paths, so it can't be used as an open redirect. |
 | Dependencies | CI fails on any `composer audit` advisory and on high or critical `npm audit` findings. Dependabot opens weekly update PRs. |
 
@@ -42,5 +44,4 @@ The Compose file ships **development defaults** so a fresh clone works with one 
 These are tracked in the README roadmap:
 
 - There's no password reset, no MFA and no SSO.
-- Destination URLs aren't yet checked for SSRF (private, loopback or metadata addresses). For now, only admins should create destinations.
-- Ingestion has no per-source rate limit or body-size limit beyond PHP's `post_max_size` (10 MB).
+- `RELAY_SSRF_ALLOWLIST` entries are trusted completely. A hostname entry skips the IP check and the pinning, so prefer CIDR entries for internal ranges.

@@ -12,7 +12,7 @@ class Source extends Model
 {
     use HasUuids;
 
-    protected $fillable = ['name', 'slug', 'provider', 'signing_secret', 'dedupe_window_seconds'];
+    protected $fillable = ['name', 'slug', 'provider', 'signing_secret', 'dedupe_window_seconds', 'rate_limit_rps'];
 
     protected $hidden = ['signing_secret'];
 
@@ -27,6 +27,7 @@ class Source extends Model
             'provider' => Provider::class,
             'signing_secret' => 'encrypted',
             'dedupe_window_seconds' => 'integer',
+            'rate_limit_rps' => 'integer',
         ];
     }
 
