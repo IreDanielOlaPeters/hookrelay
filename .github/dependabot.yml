@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: /api
+    schedule: { interval: weekly }
+    groups:
+      laravel:
+        patterns: ["laravel/*", "illuminate/*"]
+      dev-tooling:
+        dependency-type: development
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /dashboard
+    schedule: { interval: weekly }
+    groups:
+      next-react:
+        patterns: ["next", "react", "react-dom", "@types/react", "@types/react-dom"]
+      lint:
+        patterns: ["eslint", "@eslint/*", "eslint-plugin-*", "typescript-eslint", "globals"]
+      tailwind:
+        patterns: ["tailwindcss", "@tailwindcss/*", "postcss"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directories: ["/api", "/dashboard", "/mock-receiver"]
+    schedule: { interval: weekly }
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

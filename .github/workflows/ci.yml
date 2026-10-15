@@ -11,8 +11,8 @@ concurrency:
 
 jobs:
   api:
-    name: API (Pest + Pint)
-    runs-on: ubuntu-latest
+    name: API (audit, Pint, Pest)
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: api
@@ -43,7 +43,7 @@ jobs:
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -52,12 +52,15 @@ jobs:
           coverage: none
 
       - name: Cache Composer packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer
           key: composer-${{ hashFiles('api/composer.lock') }}
 
       - run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Composer audit
+        run: composer audit --no-interaction
 
       - name: Pint
         run: vendor/bin/pint --test
@@ -66,27 +69,30 @@ jobs:
         run: php artisan test
 
   dashboard:
-    name: Dashboard (ESLint + types + build)
-    runs-on: ubuntu-latest
+    name: Dashboard (audit, ESLint, types, tests, build)
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
+      - name: npm audit (fail on high or critical)
+        run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
 
   images:
     name: Docker images build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker compose config --quiet
       - run: docker compose build
