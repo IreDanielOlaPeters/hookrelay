@@ -16,7 +16,7 @@ class DemoFixtures
 {
     public static function seed(): void
     {
-        $receiver = rtrim((string) env('MOCK_RECEIVER_URL', 'http://mock-receiver:4000'), '/');
+        $receiver = rtrim((string) config('relay.demo.mock_receiver_url'), '/');
 
         $sources = [
             Source::updateOrCreate(['slug' => 'demo'], [
@@ -65,6 +65,6 @@ class DemoFixtures
 
     public static function stripeSecret(): string
     {
-        return (string) env('SEED_STRIPE_SECRET', 'whsec_test_hookrelay_demo');
+        return (string) config('relay.demo.stripe_secret');
     }
 }

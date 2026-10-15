@@ -59,6 +59,8 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Headroom for the API's persistent connections (one per FrankenPHP thread) plus workers.
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_DB: hookrelay
       POSTGRES_USER: hookrelay
@@ -89,6 +91,7 @@ services:
     environment:
       <<: *api-env
       RUN_MIGRATIONS: "true"
+      DB_PERSISTENT: "true"
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:

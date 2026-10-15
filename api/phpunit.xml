@@ -44,6 +44,9 @@
         <server name="REDIS_PREFIX" value="hookrelay_test_" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <server name="SESSION_DRIVER" value="array" force="true"/>
+        <!-- Persistent PDO would make the SKIP LOCKED test's two connections share one session. -->
+        <env name="DB_PERSISTENT" value="false" force="true"/>
+        <server name="DB_PERSISTENT" value="false" force="true"/>
         <env name="LOG_CHANNEL" value="null" force="true"/>
         <server name="LOG_CHANNEL" value="null" force="true"/>
         <env name="DEMO_MODE" value="false" force="true"/>

@@ -20,6 +20,8 @@ return [
         // Demo users may only create destinations on these hosts.
         'allowed_destination_hosts' => array_filter(array_map('trim', explode(',', (string) env('DEMO_DESTINATION_HOSTS', 'mock-receiver')))),
         'reset_at' => env('DEMO_RESET_AT', '03:00'),
+        'mock_receiver_url' => env('MOCK_RECEIVER_URL', 'http://mock-receiver:4000'),
+        'stripe_secret' => env('SEED_STRIPE_SECRET', 'whsec_test_hookrelay_demo'),
     ],
 
     // Secret used to sign outbound deliveries (X-HookRelay-Signature).

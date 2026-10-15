@@ -1,6 +1,12 @@
 #!/bin/sh
 set -e
 
+# Cache config, routes and events for this container's environment (skip with LARAVEL_OPTIMIZE=false,
+# e.g. when the source is mounted for development).
+if [ "${LARAVEL_OPTIMIZE:-true}" = "true" ]; then
+  php artisan optimize --no-interaction >/dev/null
+fi
+
 # Refuse to run production with development-default secrets (APP_KEY, ADMIN_TOKEN, RELAY_OUTBOUND_SECRET).
 php artisan relay:preflight
 

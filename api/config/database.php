@@ -95,6 +95,11 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => 'prefer',
+            // Reuse one connection per FrankenPHP thread. A fresh connection per request costs a
+            // backend fork plus a SCRAM-SHA-256 handshake (deliberately CPU-heavy) on both sides,
+            // which capped ingestion at ~165 req/s in the benchmarks. PDO rolls back any open
+            // transaction when a request ends, so state doesn't leak between requests.
+            'options' => filter_var(env('DB_PERSISTENT', false), FILTER_VALIDATE_BOOL) ? [PDO::ATTR_PERSISTENT => true] : [],
         ],
 
         'sqlsrv' => [
